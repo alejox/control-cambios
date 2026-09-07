@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f5f6f1;
+  --foreground: #1b2019;
+
+  --surface: #ffffff;
+  --surface-alt: #ecefe7;
+  --border: #dbded2;
+  --ink: #1b2019;
+  --ink-soft: #586055;
+
+  --accent: #b8792a;
+  --accent-soft: #eadfc7;
+  --teal: #2f7f6c;
+  --teal-soft: #dcebe5;
+  --critical: #a3432f;
+  --critical-soft: #f0ded8;
+
+  --ink-panel: #1b2019;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-alt: var(--surface-alt);
+  --color-border: var(--border);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-teal: var(--teal);
+  --color-teal-soft: var(--teal-soft);
+  --color-critical: var(--critical);
+  --color-critical-soft: var(--critical-soft);
+
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-display: "Fraunces", Georgia, serif;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
