@@ -21,21 +21,35 @@ create table public.profiles (
 
 alter table public.profiles enable row level security;
 
+-- Función auxiliar "is_admin()": se usa en las políticas de abajo para
+-- evitar el error clásico de RLS "infinite recursion detected in policy
+-- for relation profiles". Al ser security definer corre con privilegios
+-- de quien la creó (bypassa RLS en esa consulta interna), así que no
+-- vuelve a disparar las políticas de profiles al consultarla desde
+-- dentro de una política de profiles.
+create function public.is_admin()
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from public.profiles where id = auth.uid() and role = 'admin'
+  );
+$$;
+
 create policy "ver propio perfil"
   on public.profiles for select
   using (auth.uid() = id);
 
 create policy "admin ve todos los perfiles"
   on public.profiles for select
-  using (
-    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin')
-  );
+  using (public.is_admin());
 
 create policy "admin actualiza roles"
   on public.profiles for update
-  using (
-    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin')
-  );
+  using (public.is_admin());
 
 -- Cuando alguien se registra en auth.users, crear su fila en profiles
 -- automáticamente, siempre con role = 'sin_acceso'.
@@ -61,12 +75,17 @@ create table public.items (
   numero integer not null unique,
   tipo_flujo public.tipo_flujo not null,
   moneda_origen public.moneda not null,
-  tasa numeric(14,4) not null,
+  -- Puede quedar sin dato: no siempre se registra una tasa explicita
+  -- (por ejemplo cuando el cierre mezcla varios depositos a tasas distintas).
+  tasa numeric(14,4),
   usdt_total numeric(14,2) not null check (usdt_total >= 0),
   comision numeric(14,2) generated always as (
     case when tipo_flujo = 'bs_a_usdt' then round(usdt_total * 0.14, 2) else 0 end
   ) stored,
   detalle text,
+  -- Fecha del cierre/transaccion (distinta de created_at, que es cuando
+  -- se cargo el registro en la app).
+  fecha date,
   created_by uuid references public.profiles(id),
   created_at timestamptz not null default now()
 );
@@ -91,7 +110,8 @@ create policy "solo admin escribe items"
 create table public.depositos (
   id uuid primary key default gen_random_uuid(),
   item_id uuid not null references public.items(id) on delete cascade,
-  referencia text not null,
+  -- No todos los depositos (sobre todo Nequi/COP) traen numero de referencia.
+  referencia text,
   fecha date not null,
   valor_origen numeric(14,2) not null,
   created_at timestamptz not null default now()
