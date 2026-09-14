@@ -101,17 +101,31 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Sesión vencida." }, { status: 401 });
   }
 
-  const { data: perfil } = await supabase
+  const { data: perfil, error: errorPerfil } = await supabase
     .from("profiles")
     .select("role")
     .eq("id", user.id)
     .single();
+
+  // El error NO se descarta. Si esta consulta falla —y falla: quedo un 504
+  // de PostgREST en los logs— "perfil" viene null, el rol cae a
+  // "sin_acceso" y el usuario recibe "no tenes permiso" por un timeout.
+  // Acusar de falta de permisos a alguien que si los tiene manda a buscar
+  // el problema al lado exactamente equivocado.
+  if (errorPerfil) {
+    console.error("[comprobante] no se pudo leer el perfil:", errorPerfil.message);
+    return NextResponse.json(
+      { error: "No pudimos verificar tu cuenta en este momento. Probá de nuevo." },
+      { status: 503 },
+    );
+  }
+
   // Colaborador tambien: registra movimientos COP y necesita leer sus
   // comprobantes igual que el admin.
   const rol = perfil?.role ?? "sin_acceso";
   if (rol !== "admin" && rol !== "colaborador") {
     return NextResponse.json(
-      { error: "Tu cuenta no tiene permiso para leer comprobantes." },
+      { error: `Tu cuenta tiene el rol "${rol}" y no puede leer comprobantes.` },
       { status: 403 },
     );
   }
