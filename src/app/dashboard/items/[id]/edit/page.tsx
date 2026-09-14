@@ -1,7 +1,10 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import ItemForm from "../../item-form";
 import { actualizarItem } from "../../actions";
+import { leerComisionGlobal } from "@/lib/configuracion";
+import { monedaDeFlujo } from "@/lib/items";
 
 export default async function EditarItemPage({
   params,
@@ -35,48 +38,49 @@ export default async function EditarItemPage({
 
   const { data: depositos } = await supabase
     .from("depositos")
-    .select("referencia, fecha, valor_origen")
+    .select("referencia, fecha, valor_origen, comprobante_path, comprobante_texto")
     .eq("item_id", id)
     .order("fecha", { ascending: true });
 
+  const comisionGlobalPct = await leerComisionGlobal();
   const actualizarConId = actualizarItem.bind(null, id);
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-surface px-10 py-4">
-        <div className="flex items-center gap-2.5">
-          <span className="h-2 w-2 rounded-full bg-accent" />
-          <span className="font-mono text-xs uppercase tracking-widest text-accent">
-            Control de Cambios
-          </span>
-        </div>
-      </header>
+    <div className="mx-auto max-w-2xl px-6 py-10">
+      <Link
+        href="/dashboard"
+        className="mb-6 inline-flex items-center gap-1.5 text-[13px] text-ink-soft transition hover:text-ink"
+      >
+        <span className="text-[15px] leading-none">←</span> Volver al panel
+      </Link>
 
-      <main className="mx-auto max-w-2xl px-6 py-14">
-        <p className="mb-2.5 font-mono text-[11.5px] uppercase tracking-widest text-accent">
-          Editar item
-        </p>
-        <h1
-          className="mb-8 text-[26px] font-medium text-ink"
-          style={{ fontFamily: "var(--font-display)" }}
-        >
-          Cierre #{item.numero}
-        </h1>
+      <p className="mb-2.5 font-mono text-[11.5px] uppercase tracking-widest text-accent">
+        Editar item
+      </p>
+      <h1
+        className="mb-8 text-[26px] font-medium text-ink"
+        style={{ fontFamily: "var(--font-display)" }}
+      >
+        Movimiento #{item.numero}
+      </h1>
 
-        <ItemForm
-          action={actualizarConId}
-          siguienteNumero={item.numero}
-          initial={{
-            numero: item.numero,
-            tipo_flujo: item.tipo_flujo,
-            tasa: item.tasa,
-            usdt_total: item.usdt_total,
-            detalle: item.detalle,
-            fecha: item.fecha,
-            depositos: depositos ?? [],
-          }}
-        />
-      </main>
+      <ItemForm
+        action={actualizarConId}
+        siguienteNumero={item.numero}
+        comisionGlobalPct={comisionGlobalPct}
+        // Un cierre ya registrado conserva su propia moneda: la
+        // preferencia del header no reescribe el pasado.
+        monedaPreferida={monedaDeFlujo(item.tipo_flujo)}
+        initial={{
+          numero: item.numero,
+          tipo_flujo: item.tipo_flujo,
+          tasa: item.tasa,
+          usdt_total: item.usdt_total,
+          detalle: item.detalle,
+          fecha: item.fecha,
+          depositos: depositos ?? [],
+        }}
+      />
     </div>
   );
 }

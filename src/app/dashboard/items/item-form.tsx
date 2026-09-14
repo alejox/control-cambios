@@ -1,28 +1,104 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { ActionState } from "./actions";
-import type { Deposito, TipoFlujo } from "@/lib/items";
+import type { FuenteTasa, RespuestaReferencia } from "@/app/api/tasa-referencia/route";
+import ComprobanteInput from "./comprobante-input";
+import VisorComprobante, { type VisorHandle } from "../visor-comprobante";
+import PegarComprobante from "./pegar-comprobante";
+import SubirVarios, { type ComprobanteCargado } from "./subir-varios";
+import { PAR_POR_MONEDA, type ParReferencia } from "@/lib/binance";
+import type { DatosComprobante } from "@/lib/comprobante";
+import {
+  ETIQUETA_FLUJO,
+  calcularComision,
+  flujoDeMoneda,
+  formatMonto,
+  monedaDeFlujo,
+  type Deposito,
+  type Moneda,
+  type TipoFlujo,
+} from "@/lib/items";
 
 type FilaDeposito = {
   key: number;
   referencia: string;
   fecha: string;
   valor: string;
+  comprobante: string;
+  comprobanteTexto: string;
+  /** Resumen de lo que se leyo del comprobante, para poder contrastarlo. */
+  leido: string | null;
+  avisos: string[];
 };
 
+// La clave (par + fecha) viaja dentro del resultado para poder decidir en
+// render si lo guardado corresponde a lo que se esta pidiendo ahora o si
+// todavia estamos esperando la respuesta.
+type ResultadoReferencia =
+  | { clave: string; estado: "ok"; fuente: FuenteTasa }
+  | { clave: string; estado: "error"; mensaje: string };
+
+type EstadoReferencia = { estado: "cargando" } | ResultadoReferencia;
+
 function filaVacia(key: number): FilaDeposito {
-  return { key, referencia: "", fecha: "", valor: "" };
+  return {
+    key,
+    referencia: "",
+    fecha: "",
+    valor: "",
+    comprobante: "",
+    comprobanteTexto: "",
+    leido: null,
+    avisos: [],
+  };
+}
+
+function proximaKey(filas: FilaDeposito[]) {
+  return filas.length > 0 ? Math.max(...filas.map((f) => f.key)) + 1 : 0;
+}
+
+// Suma de los depositos en la moneda de origen (Bs o COP). Las filas
+// todavia vacias o a medio escribir simplemente no suman.
+function sumarDepositos(filas: FilaDeposito[]) {
+  return filas.reduce((acc, fila) => {
+    const valor = Number(fila.valor);
+    if (fila.valor.trim() === "" || !Number.isFinite(valor)) return acc;
+    return acc + valor;
+  }, 0);
+}
+
+// El total en USDT es un valor DERIVADO de la conversion: lo que se recibio
+// en Bs/COP dividido entre la tasa. No es un dato que haya que tipear.
+function calcularUsdt(totalOrigen: number, tasaRaw: string) {
+  const tasa = Number(tasaRaw);
+  if (tasaRaw.trim() === "" || !Number.isFinite(tasa) || tasa <= 0) return null;
+  if (totalOrigen <= 0) return null;
+  return Math.round((totalOrigen / tasa) * 100) / 100;
+}
+
+function claveDe(par: ParReferencia, fecha: string) {
+  return `${par}|${fecha}`;
 }
 
 export default function ItemForm({
   action,
   siguienteNumero,
+  comisionGlobalPct,
+  monedaPreferida,
+  puedeCambiarMoneda = true,
   initial,
 }: {
   action: (state: ActionState, formData: FormData) => Promise<ActionState>;
   siguienteNumero: number;
+  /** Moneda elegida en el header. Define el flujo de los cierres NUEVOS. */
+  monedaPreferida: Moneda;
+  /** false para el colaborador: solo puede registrar COP -> USDT. */
+  puedeCambiarMoneda?: boolean;
+  /** Porcentaje vigente en la configuracion global, solo para mostrar.
+   *  El valor que se guarda lo sella la base, no este formulario. */
+  comisionGlobalPct: number;
   initial?: {
     numero: number;
     tipo_flujo: TipoFlujo;
@@ -37,8 +113,20 @@ export default function ItemForm({
     error: null,
   });
 
-  const [tipoFlujo, setTipoFlujo] = useState<TipoFlujo>(
-    initial?.tipo_flujo ?? "bs_a_usdt",
+  // Un solo visor para todo el formulario, no uno por fila de deposito.
+  const visorRef = useRef<VisorHandle>(null);
+
+  // El flujo ya no se elige acá. En un cierre nuevo lo define la moneda del
+  // header; en uno que ya existe manda el que tiene guardado, porque
+  // cambiarlo por una preferencia de hoy reescribiría un cierre viejo.
+  const tipoFlujo: TipoFlujo = initial?.tipo_flujo ?? flujoDeMoneda(monedaPreferida);
+  const [fecha, setFecha] = useState(
+    initial?.fecha ?? new Date().toISOString().slice(0, 10),
+  );
+  // null = la tasa la manda la fuente oficial de esa moneda. Un string = el
+  // usuario la piso a mano porque el cierre se hizo a otra tasa.
+  const [tasaManual, setTasaManual] = useState<string | null>(
+    initial?.tasa !== null && initial?.tasa !== undefined ? String(initial.tasa) : null,
   );
   const [filas, setFilas] = useState<FilaDeposito[]>(() => {
     if (initial && initial.depositos.length > 0) {
@@ -47,13 +135,192 @@ export default function ItemForm({
         referencia: d.referencia ?? "",
         fecha: d.fecha,
         valor: String(d.valor_origen),
+        comprobante: d.comprobante_path ?? "",
+        comprobanteTexto: d.comprobante_texto ?? "",
+        leido: null,
+        avisos: [],
       }));
     }
     return [filaVacia(0)];
   });
-  let nextKey = filas.length > 0 ? Math.max(...filas.map((f) => f.key)) + 1 : 0;
+
+  // null = el total lo manda el calculo. Un string = el usuario lo piso a mano
+  // (pasa cuando lo que llego no cuadra exacto con tasa x depositos).
+  const [usdtManual, setUsdtManual] = useState<string | null>(() => {
+    if (!initial) return null;
+    const guardado = initial.usdt_total;
+    const calculado = calcularUsdt(
+      initial.depositos.reduce((acc, d) => acc + Number(d.valor_origen), 0),
+      initial.tasa !== null ? String(initial.tasa) : "",
+    );
+    return calculado !== null && Math.abs(calculado - guardado) < 0.005
+      ? null
+      : String(guardado);
+  });
 
   const esBs = tipoFlujo === "bs_a_usdt";
+  const moneda = monedaDeFlujo(tipoFlujo);
+  const par = PAR_POR_MONEDA[moneda];
+  const clave = claveDe(par, fecha);
+
+  const [resultado, setResultado] = useState<ResultadoReferencia | null>(null);
+
+  useEffect(() => {
+    let cancelado = false;
+
+    // La TRM se pide para la fecha del cierre, no para hoy: lo que importa
+    // en un registro auditable es la tasa que regia ese dia.
+    fetch(`/api/tasa-referencia?par=${par}&fecha=${fecha}`)
+      .then(async (respuesta) => {
+        const cuerpo = await respuesta.json();
+        if (cancelado) return;
+        const clave = claveDe(par, fecha);
+        if (!respuesta.ok) {
+          setResultado({ clave, estado: "error", mensaje: cuerpo.error ?? "Error desconocido." });
+          return;
+        }
+        const { fuente } = cuerpo as RespuestaReferencia;
+        setResultado({ clave, estado: "ok", fuente });
+      })
+      .catch((e: Error) => {
+        if (!cancelado) {
+          setResultado({ clave: claveDe(par, fecha), estado: "error", mensaje: e.message });
+        }
+      });
+
+    return () => {
+      cancelado = true;
+    };
+  }, [par, fecha]);
+
+  // Si lo guardado es de otra clave, el usuario acaba de cambiar de flujo o de
+  // fecha y la consulta nueva sigue en vuelo: eso es "cargando", sin setState.
+  const referencia: EstadoReferencia =
+    resultado !== null && resultado.clave === clave ? resultado : { estado: "cargando" };
+
+  // La tasa arranca en la fuente oficial de la moneda: TRM para COP, Binance
+  // P2P para Bs. Se puede pisar, pero ese es el valor por defecto.
+  const fuente = referencia.estado === "ok" ? referencia.fuente : null;
+  const tasa = tasaManual ?? (fuente !== null ? String(fuente.valor) : "");
+  const tasaPisadaAMano = tasaManual !== null;
+
+  const totalOrigen = sumarDepositos(filas);
+  const usdtCalculado = calcularUsdt(totalOrigen, tasa);
+  const usdtValor = usdtManual ?? (usdtCalculado !== null ? String(usdtCalculado) : "");
+  const pisadoAMano = usdtManual !== null;
+
+  // El porcentaje no se elige acá: lo fija el admin en la configuracion
+  // global y la base lo sella al guardar. Aplica a los dos flujos.
+  const comisionPct = comisionGlobalPct;
+  const usdtAGuardar = Number(usdtValor);
+  const comisionUsdt =
+    usdtValor.trim() !== "" && Number.isFinite(usdtAGuardar) && comisionPct > 0
+      ? calcularComision(usdtAGuardar, comisionPct)
+      : null;
+
+  const tasaNumero = Number(tasa);
+  const desvio =
+    fuente !== null && tasa.trim() !== "" && Number.isFinite(tasaNumero) && tasaNumero > 0
+      ? ((tasaNumero - fuente.valor) / fuente.valor) * 100
+      : null;
+
+  // Completa la fila con lo leido del comprobante, pero SOLO donde esta
+  // vacia: si el usuario ya escribio algo, manda lo que escribio. Nada de
+  // esto se guarda solo — queda en pantalla para que lo confirme.
+  function aplicarDatos(key: number, datos: DatosComprobante) {
+    setFilas((f) =>
+      f.map((fila) => {
+        if (fila.key !== key) return fila;
+
+        const detalle = [datos.banco, datos.beneficiario].filter(Boolean).join(" · ");
+
+        return {
+          ...fila,
+          referencia:
+            fila.referencia.trim() === "" && datos.referencia
+              ? datos.referencia
+              : fila.referencia,
+          fecha: fila.fecha === "" && datos.fecha ? datos.fecha : fila.fecha,
+          valor:
+            fila.valor.trim() === "" && datos.monto !== null
+              ? String(datos.monto)
+              : fila.valor,
+          leido: detalle === "" ? null : detalle,
+          avisos: datos.avisos,
+        };
+      }),
+    );
+  }
+
+  function filaEstaVacia(fila: FilaDeposito) {
+    return (
+      fila.referencia.trim() === "" &&
+      fila.fecha === "" &&
+      fila.valor.trim() === "" &&
+      fila.comprobante === "" &&
+      fila.comprobanteTexto === ""
+    );
+  }
+
+  function datosAFila(datos: DatosComprobante, texto?: string) {
+    return {
+      comprobanteTexto: texto ?? "",
+      referencia: datos.referencia ?? "",
+      fecha: datos.fecha ?? "",
+      valor: datos.monto !== null ? String(datos.monto) : "",
+      leido: [datos.banco, datos.beneficiario].filter(Boolean).join(" · ") || null,
+      avisos: datos.avisos,
+    };
+  }
+
+  // Los comprobantes leidos van completando las filas vacias que ya existan
+  // y, cuando se acaban, se agregan filas nuevas. Asi cargar cinco de corrido
+  // deja cinco depositos sin huecos y sin pisar lo ya cargado.
+  function agregarFilas(lote: Partial<FilaDeposito>[]) {
+    if (lote.length === 0) return;
+
+    setFilas((f) => {
+      const copia = [...f];
+      let key = proximaKey(copia);
+
+      for (const traidos of lote) {
+        const libre = copia.findIndex(filaEstaVacia);
+        if (libre > -1) {
+          copia[libre] = { ...copia[libre], ...traidos };
+        } else {
+          copia.push({ ...filaVacia(key), ...traidos });
+          key += 1;
+        }
+      }
+      return copia;
+    });
+  }
+
+  // Se guarda el texto crudo de cada comprobante: es el respaldo del
+  // deposito, igual que lo seria una imagen.
+  function agregarDesdeTexto(lote: { datos: DatosComprobante; texto: string }[]) {
+    agregarFilas(lote.map((c) => datosAFila(c.datos, c.texto)));
+  }
+
+  function agregarDesdeArchivos(lote: ComprobanteCargado[]) {
+    agregarFilas(
+      lote.map((c) => ({
+        // El comprobante se adjunta siempre, aunque la lectura haya fallado:
+        // el archivo ya esta subido y no se puede perder.
+        comprobante: c.path,
+        ...(c.datos ? datosAFila(c.datos) : {}),
+        ...(c.error ? { avisos: [c.error] } : {}),
+      })),
+    );
+  }
+
+  function actualizarFila(
+    key: number,
+    campo: "referencia" | "fecha" | "valor" | "comprobante" | "comprobanteTexto",
+    valor: string,
+  ) {
+    setFilas((f) => f.map((fila) => (fila.key === key ? { ...fila, [campo]: valor } : fila)));
+  }
 
   return (
     <form action={formAction} className="flex flex-col gap-7">
@@ -75,7 +342,8 @@ export default function ItemForm({
           <input
             name="fecha"
             type="date"
-            defaultValue={initial?.fecha ?? new Date().toISOString().slice(0, 10)}
+            value={fecha}
+            onChange={(e) => setFecha(e.target.value)}
             className="h-11 rounded-[10px] border border-border bg-surface px-3.5 text-sm outline-none focus:border-accent focus:ring-1 focus:ring-accent"
           />
         </div>
@@ -83,61 +351,276 @@ export default function ItemForm({
 
       <div className="flex flex-col gap-1.5">
         <label className="text-[13px] font-medium text-ink-soft">Tipo de flujo</label>
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            type="button"
-            onClick={() => setTipoFlujo("bs_a_usdt")}
-            className={`rounded-[10px] border px-4 py-3 text-left text-sm transition ${
-              esBs
-                ? "border-accent bg-accent-soft/50 text-ink"
-                : "border-border bg-surface text-ink-soft hover:bg-surface-alt"
+        <div
+          className={`flex flex-wrap items-center gap-x-3 gap-y-1 rounded-[10px] border px-4 py-3 ${
+            esBs ? "border-accent bg-accent-soft/40" : "border-teal bg-teal-soft/40"
+          }`}
+        >
+          <span
+            className={`font-mono text-[11px] uppercase tracking-widest ${
+              esBs ? "text-accent" : "text-teal"
             }`}
           >
-            <div className="font-mono text-[11px] uppercase tracking-widest text-accent">Bs → USDT</div>
-            <div className="mt-1 text-[13.5px]">Recibimos Bs y Carlos convierte a USDT</div>
-          </button>
-          <button
-            type="button"
-            onClick={() => setTipoFlujo("cop_a_usdt")}
-            className={`rounded-[10px] border px-4 py-3 text-left text-sm transition ${
-              !esBs
-                ? "border-teal bg-teal-soft/50 text-ink"
-                : "border-border bg-surface text-ink-soft hover:bg-surface-alt"
-            }`}
-          >
-            <div className="font-mono text-[11px] uppercase tracking-widest text-teal">COP → USDT</div>
-            <div className="mt-1 text-[13.5px]">Recibimos COP, convertimos y queda a favor de Carlos</div>
-          </button>
+            {ETIQUETA_FLUJO[tipoFlujo]}
+          </span>
+          <span className="text-[13.5px] text-ink">
+            {esBs
+              ? "Pagos recibidos en bolívares, convertidos a USDT"
+              : "Pagos recibidos en pesos, convertidos a USDT"}
+          </span>
+          <span className="text-[12.5px] text-ink-soft">
+            ·{" "}
+            {initial
+              ? "así se registró este cierre"
+              : puedeCambiarMoneda
+                ? "cambialo en el selector del header"
+                : "es el único flujo que podés registrar"}
+          </span>
         </div>
         <input type="hidden" name="tipo_flujo" value={tipoFlujo} />
       </div>
 
-      <div className="grid grid-cols-2 gap-5">
-        <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
           <label className="text-[13px] font-medium text-ink-soft">
-            Tasa {esBs ? "(Bs por USDT)" : "(opcional)"}
+            Depósitos {esBs ? "(en Bs)" : "(en COP)"}
           </label>
+          <div className="flex items-center gap-3">
+            <span className="text-[12.5px] text-ink-soft">
+              Total recibido:{" "}
+              <span className="font-medium text-ink">{formatMonto(totalOrigen, moneda)}</span>
+            </span>
+            <SubirVarios onAplicar={agregarDesdeArchivos} />
+            <PegarComprobante moneda={moneda} onAplicar={agregarDesdeTexto} />
+            <button
+              type="button"
+              onClick={() => setFilas((f) => [...f, filaVacia(proximaKey(f))])}
+              className="rounded-lg border border-border px-2.5 py-1 text-xs text-ink-soft transition hover:bg-surface-alt"
+            >
+              + Agregar depósito
+            </button>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2.5">
+          {filas.map((fila) => (
+            <div key={fila.key} className="flex flex-col gap-1">
+              <div className="grid grid-cols-[1fr_1fr_1fr_auto_auto] items-start gap-2.5">
+              <input
+                name="deposito_referencia"
+                placeholder="Referencia (opcional)"
+                value={fila.referencia}
+                onChange={(e) => actualizarFila(fila.key, "referencia", e.target.value)}
+                className="h-10 rounded-[9px] border border-border bg-surface px-3 text-[13.5px] outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+              />
+              <input
+                name="deposito_fecha"
+                type="date"
+                value={fila.fecha}
+                onChange={(e) => actualizarFila(fila.key, "fecha", e.target.value)}
+                className="h-10 rounded-[9px] border border-border bg-surface px-3 text-[13.5px] outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+              />
+              <input
+                name="deposito_valor"
+                type="number"
+                step="0.01"
+                min={0}
+                placeholder={esBs ? "Valor en Bs" : "Valor en COP"}
+                value={fila.valor}
+                onChange={(e) => actualizarFila(fila.key, "valor", e.target.value)}
+                className="h-10 rounded-[9px] border border-border bg-surface px-3 text-[13.5px] outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+              />
+              <ComprobanteInput
+                path={fila.comprobante}
+                onChange={(path) => actualizarFila(fila.key, "comprobante", path)}
+                onDatos={(datos) => aplicarDatos(fila.key, datos)}
+                texto={fila.comprobanteTexto}
+                titulo={
+                  fila.referencia.trim() !== ""
+                    ? `Referencia ${fila.referencia.trim()}`
+                    : fila.fecha !== ""
+                      ? `Depósito del ${fila.fecha}`
+                      : "Comprobante"
+                }
+                visorRef={visorRef}
+                onQuitarTexto={() => actualizarFila(fila.key, "comprobanteTexto", "")}
+              />
+              <button
+                type="button"
+                onClick={() => setFilas((f) => f.filter((x) => x.key !== fila.key))}
+                className="h-10 rounded-[9px] border border-border px-3 text-[13.5px] text-ink-soft transition hover:bg-critical-soft hover:text-critical"
+                aria-label="Quitar depósito"
+              >
+                ✕
+              </button>
+              </div>
+
+              {(fila.leido !== null || fila.avisos.length > 0) && (
+                <div className="flex flex-col gap-0.5">
+                  {fila.leido !== null && (
+                    <span className="text-[11.5px] text-ink-soft">
+                      Leído del comprobante: {fila.leido}
+                    </span>
+                  )}
+                  {fila.avisos.map((aviso, i) => (
+                    <span key={i} className="text-[11.5px] text-accent">
+                      {aviso}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-5">
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center justify-between">
+            <label className="text-[13px] font-medium text-ink-soft">
+              Tasa ({esBs ? "Bs" : "COP"} por USDT)
+            </label>
+            {tasaPisadaAMano && fuente !== null && (
+              <button
+                type="button"
+                onClick={() => setTasaManual(null)}
+                className="text-[11.5px] text-accent transition hover:underline"
+              >
+                Usar {fuente.etiqueta}
+              </button>
+            )}
+          </div>
           <input
             name="tasa"
             type="number"
             step="0.0001"
             min={0}
-            defaultValue={initial?.tasa ?? ""}
-            placeholder="Opcional"
+            value={tasa}
+            onChange={(e) => setTasaManual(e.target.value)}
+            placeholder={esBs ? "Ej: 950" : "Se toma la TRM"}
             className="h-11 rounded-[10px] border border-border bg-surface px-3.5 text-sm outline-none focus:border-accent focus:ring-1 focus:ring-accent"
           />
         </div>
         <div className="flex flex-col gap-1.5">
-          <label className="text-[13px] font-medium text-ink-soft">Total USDT</label>
+          <div className="flex items-center justify-between">
+            <label className="text-[13px] font-medium text-ink-soft">Total USDT</label>
+            {pisadoAMano && usdtCalculado !== null && (
+              <button
+                type="button"
+                onClick={() => setUsdtManual(null)}
+                className="text-[11.5px] text-accent transition hover:underline"
+              >
+                Usar el cálculo
+              </button>
+            )}
+          </div>
           <input
             name="usdt_total"
             type="number"
             step="0.01"
             min={0}
             required
-            defaultValue={initial?.usdt_total ?? ""}
+            value={usdtValor}
+            onChange={(e) => setUsdtManual(e.target.value)}
+            placeholder="Se calcula solo"
             className="h-11 rounded-[10px] border border-border bg-surface px-3.5 text-sm outline-none focus:border-accent focus:ring-1 focus:ring-accent"
           />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          {/* Misma estructura de fila que Tasa y Total USDT: el dato
+              secundario va a la derecha del label. */}
+          <div className="flex items-center justify-between">
+            <label
+              htmlFor="comision_pct_vista"
+              className="text-[13px] font-medium text-ink-soft"
+            >
+              Comisión (%)
+            </label>
+            <span className="font-mono text-[10.5px] uppercase tracking-widest text-ink-soft/70">
+              solo admin
+            </span>
+          </div>
+          {/* Sin atributo name y deshabilitado: este numero no viaja en el
+              submit. El porcentaje lo sella la base leyendo la configuracion
+              global, asi que aca es estrictamente informativo. */}
+          <div className="relative">
+            <input
+              id="comision_pct_vista"
+              type="number"
+              value={comisionPct}
+              disabled
+              title="Lo define el administrador en la configuración global."
+              className="h-11 w-full cursor-not-allowed rounded-[10px] border border-border bg-surface-alt pr-9 pl-3.5 text-sm text-ink-soft"
+            />
+            <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-sm text-ink-soft/70">
+              %
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="-mt-4 flex flex-col gap-2">
+        <p className="text-[12.5px] leading-relaxed text-ink-soft">
+          {usdtCalculado === null ? (
+            <>Carga la tasa y al menos un depósito: el total en USDT sale de esa conversión.</>
+          ) : pisadoAMano ? (
+            <>
+              La conversión da{" "}
+              <span className="font-medium text-ink">{formatMonto(usdtCalculado, "USDT")}</span> (
+              {formatMonto(totalOrigen, moneda)} ÷ {tasa}). Estás guardando otro valor a mano.
+            </>
+          ) : (
+            <>
+              {formatMonto(totalOrigen, moneda)} ÷ {tasa} ={" "}
+              <span className="font-medium text-ink">{formatMonto(usdtCalculado, "USDT")}</span>
+            </>
+          )}
+        </p>
+
+        {comisionUsdt !== null && (
+          <p className="text-[12.5px] leading-relaxed text-ink-soft">
+            Comisión {comisionPct}% sobre {formatMonto(usdtAGuardar, "USDT")}:{" "}
+            <span className="font-medium text-ink">{formatMonto(comisionUsdt, "USDT")}</span>{" "}
+            <span className="text-ink-soft/80">· porcentaje global, lo cambia un admin</span>
+          </p>
+        )}
+
+        <div className="rounded-[10px] border border-border bg-surface-alt/50 px-3.5 py-2.5">
+          {referencia.estado === "cargando" && (
+            <p className="text-[12.5px] text-ink-soft">
+              Consultando {esBs ? "el P2P de Binance" : "la TRM oficial"}…
+            </p>
+          )}
+
+          {referencia.estado === "error" && (
+            <p className="text-[12.5px] text-ink-soft">
+              Sin referencia ({referencia.mensaje}). Cargá la tasa a mano.
+            </p>
+          )}
+
+          {fuente !== null && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12.5px] text-ink-soft">
+              <span
+                className={`font-mono text-[11px] uppercase tracking-widest ${
+                  fuente.id === "trm" ? "text-teal" : "text-accent"
+                }`}
+              >
+                {fuente.etiqueta}
+              </span>
+              <span>
+                {fuente.descripcion}:{" "}
+                <span className="font-medium text-ink">{formatMonto(fuente.valor, moneda)}</span>
+              </span>
+              <span className="text-ink-soft/70">{fuente.detalle}</span>
+              {tasaPisadaAMano && desvio !== null && Math.abs(desvio) >= 0.005 && (
+                <span className={desvio < 0 ? "text-[#8f5e1f]" : "text-[#215d4d]"}>
+                  tu tasa está {Math.abs(desvio).toFixed(2)}%{" "}
+                  {desvio < 0 ? "por debajo" : "por encima"}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -152,57 +635,9 @@ export default function ItemForm({
         />
       </div>
 
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <label className="text-[13px] font-medium text-ink-soft">
-            Depósitos {esBs ? "(en Bs)" : "(en COP)"}
-          </label>
-          <button
-            type="button"
-            onClick={() => setFilas((f) => [...f, filaVacia(nextKey)])}
-            className="rounded-lg border border-border px-2.5 py-1 text-xs text-ink-soft transition hover:bg-surface-alt"
-          >
-            + Agregar depósito
-          </button>
-        </div>
-
-        <div className="flex flex-col gap-2.5">
-          {filas.map((fila, idx) => (
-            <div key={fila.key} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2.5">
-              <input
-                name="deposito_referencia"
-                placeholder="Referencia (opcional)"
-                defaultValue={fila.referencia}
-                className="h-10 rounded-[9px] border border-border bg-surface px-3 text-[13.5px] outline-none focus:border-accent focus:ring-1 focus:ring-accent"
-              />
-              <input
-                name="deposito_fecha"
-                type="date"
-                defaultValue={fila.fecha}
-                className="h-10 rounded-[9px] border border-border bg-surface px-3 text-[13.5px] outline-none focus:border-accent focus:ring-1 focus:ring-accent"
-              />
-              <input
-                name="deposito_valor"
-                type="number"
-                step="0.01"
-                placeholder="Valor"
-                defaultValue={fila.valor}
-                className="h-10 rounded-[9px] border border-border bg-surface px-3 text-[13.5px] outline-none focus:border-accent focus:ring-1 focus:ring-accent"
-              />
-              <button
-                type="button"
-                onClick={() => setFilas((f) => f.filter((_, i) => i !== idx))}
-                className="h-10 rounded-[9px] border border-border px-3 text-[13.5px] text-ink-soft transition hover:bg-critical-soft hover:text-critical"
-                aria-label="Quitar depósito"
-              >
-                ✕
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-
       {state.error && <p className="text-sm text-critical">{state.error}</p>}
+
+      <VisorComprobante ref={visorRef} />
 
       <div className="flex items-center gap-3">
         <button
@@ -212,10 +647,7 @@ export default function ItemForm({
         >
           {pending ? "Guardando…" : "Guardar"}
         </button>
-        <Link
-          href="/dashboard"
-          className="text-sm text-ink-soft transition hover:text-ink"
-        >
+        <Link href="/dashboard" className="text-sm text-ink-soft transition hover:text-ink">
           Cancelar
         </Link>
       </div>

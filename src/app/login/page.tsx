@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -138,9 +139,19 @@ export default function LoginPage() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-[13px] font-medium text-ink-soft">
-                Contraseña
-              </label>
+              <div className="flex items-baseline justify-between gap-3">
+                <label className="text-[13px] font-medium text-ink-soft">
+                  Contraseña
+                </label>
+                {mode === "signin" && (
+                  <Link
+                    href="/forgot-password"
+                    className="text-[12.5px] font-medium text-accent hover:underline"
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </Link>
+                )}
+              </div>
               <input
                 type="password"
                 required

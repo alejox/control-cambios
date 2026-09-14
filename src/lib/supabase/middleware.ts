@@ -33,8 +33,12 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  // Rutas alcanzables sin sesión. /update-password queda fuera a
+  // propósito: solo se llega con la sesión que crea el enlace de
+  // recuperación al pasar por /auth/callback.
   const isAuthRoute =
     request.nextUrl.pathname.startsWith("/login") ||
+    request.nextUrl.pathname.startsWith("/forgot-password") ||
     request.nextUrl.pathname.startsWith("/auth");
 
   if (!user && !isAuthRoute) {
