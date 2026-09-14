@@ -64,7 +64,7 @@ export default function ComprobanteInput({
   }
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex w-full min-w-0 flex-col gap-1">
       <input
         ref={inputRef}
         type="file"
@@ -82,11 +82,11 @@ export default function ComprobanteInput({
       <input type="hidden" name="deposito_comprobante_texto" value={texto} />
 
       {path ? (
-        <div className="flex h-10 items-center gap-2 rounded-[9px] border border-border bg-surface px-3">
+        <div className="flex h-10 w-full items-center justify-between gap-2 rounded-[9px] border border-border bg-surface px-3">
           <button
             type="button"
             onClick={ver}
-            className="text-[12.5px] text-accent transition hover:underline"
+            className="truncate text-[12.5px] text-accent transition hover:underline"
           >
             {leyendo ? "Leyendo…" : "Ver comprobante"}
           </button>
@@ -100,7 +100,7 @@ export default function ComprobanteInput({
           </button>
         </div>
       ) : texto ? (
-        <div className="flex h-10 items-center gap-2 rounded-[9px] border border-border bg-surface px-3">
+        <div className="flex h-10 w-full items-center justify-between gap-2 rounded-[9px] border border-border bg-surface px-3">
           <button
             type="button"
             onClick={ver}
@@ -125,7 +125,7 @@ export default function ComprobanteInput({
           type="button"
           disabled={subiendo || leyendo}
           onClick={() => inputRef.current?.click()}
-          className="h-10 whitespace-nowrap rounded-[9px] border border-dashed border-border px-3 text-[12.5px] text-ink-soft transition hover:bg-surface-alt disabled:opacity-50"
+          className="h-10 w-full whitespace-nowrap rounded-[9px] border border-dashed border-border px-3 text-[12.5px] text-ink-soft transition hover:bg-surface-alt disabled:opacity-50"
         >
           {subiendo ? "Subiendo…" : leyendo ? "Leyendo…" : "+ Comprobante"}
         </button>

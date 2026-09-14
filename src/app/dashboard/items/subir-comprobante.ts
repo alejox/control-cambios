@@ -53,6 +53,10 @@ export async function leerComprobante(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ path }),
+      // Un poco mas que el presupuesto del servidor (20s), para que el
+      // corte normal traiga el mensaje del backend y este sea la red de
+      // seguridad: nadie se queda mirando "Leyendo..." para siempre.
+      signal: AbortSignal.timeout(25_000),
     });
     const cuerpo = await respuesta.json();
     if (!respuesta.ok) {
@@ -60,6 +64,12 @@ export async function leerComprobante(
     }
     return { datos: cuerpo as DatosComprobante };
   } catch (e) {
+    if (e instanceof DOMException && e.name === "TimeoutError") {
+      return {
+        error:
+          "No se pudo leer el comprobante: tardó demasiado. Probá de nuevo o cargá los datos a mano.",
+      };
+    }
     return { error: `No pudimos leer el comprobante: ${(e as Error).message}` };
   }
 }

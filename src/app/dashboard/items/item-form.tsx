@@ -368,13 +368,14 @@ export default function ItemForm({
               ? "Pagos recibidos en bolívares, convertidos a USDT"
               : "Pagos recibidos en pesos, convertidos a USDT"}
           </span>
-          <span className="text-[12.5px] text-ink-soft">
-            ·{" "}
+          {/* Renglon propio: tres textos de distinto peso en una sola linea
+              se leen como uno solo y ninguno se entiende. */}
+          <span className="w-full text-[12.5px] text-ink-soft">
             {initial
-              ? "así se registró este cierre"
+              ? "Así se registró este cierre."
               : puedeCambiarMoneda
-                ? "cambialo en el selector del header"
-                : "es el único flujo que podés registrar"}
+                ? "Cambialo en el selector del header."
+                : "Es el único flujo que podés registrar."}
           </span>
         </div>
         <input type="hidden" name="tipo_flujo" value={tipoFlujo} />
@@ -385,27 +386,53 @@ export default function ItemForm({
           <label className="text-[13px] font-medium text-ink-soft">
             Depósitos {esBs ? "(en Bs)" : "(en COP)"}
           </label>
-          <div className="flex items-center gap-3">
-            <span className="text-[12.5px] text-ink-soft">
-              Total recibido:{" "}
-              <span className="font-medium text-ink">{formatMonto(totalOrigen, moneda)}</span>
-            </span>
+          <div className="flex items-center gap-2">
             <SubirVarios onAplicar={agregarDesdeArchivos} />
             <PegarComprobante moneda={moneda} onAplicar={agregarDesdeTexto} />
-            <button
-              type="button"
-              onClick={() => setFilas((f) => [...f, filaVacia(proximaKey(f))])}
-              className="rounded-lg border border-border px-2.5 py-1 text-xs text-ink-soft transition hover:bg-surface-alt"
-            >
-              + Agregar depósito
-            </button>
           </div>
         </div>
 
-        <div className="flex flex-col gap-2.5">
-          {filas.map((fila) => (
+        <div className="flex flex-col gap-2.5 rounded-[10px] border border-border bg-surface-alt/40 p-3">
+          {/* Los placeholders desaparecen apenas escribis: con tres o cuatro
+              filas cargadas ya nadie sabe que columna es cual. El encabezado
+              se queda. */}
+          {filas.length > 0 && (
+            <div className="hidden md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_10rem_2.5rem_2.5rem] gap-2.5 px-1 font-mono text-[10.5px] uppercase tracking-wider text-ink-soft md:grid">
+              <span>Referencia</span>
+              <span>Fecha</span>
+              <span>Valor</span>
+              <span>Comprobante</span>
+            </div>
+          )}
+
+          {/* Sin filas no hay ninguna ✕ al lado de la cual poner el +, y el
+              formulario quedaria sin salida. Un movimiento puede no tener
+              depositos, asi que la fila no se fuerza: se ofrece volver. */}
+          {filas.length === 0 && (
+            <button
+              type="button"
+              onClick={() => setFilas((f) => [...f, filaVacia(proximaKey(f))])}
+              className="h-10 self-start rounded-[9px] border border-dashed border-border px-3 text-[12.5px] text-ink-soft transition hover:bg-surface-alt"
+            >
+              + Agregar depósito
+            </button>
+          )}
+          {filas.map((fila, i) => (
             <div key={fila.key} className="flex flex-col gap-1">
-              <div className="grid grid-cols-[1fr_1fr_1fr_auto_auto] items-start gap-2.5">
+              {/* Tres cosas, y las tres importan:
+                  - Anchos fijos y no "auto": cada fila es su propia grilla, y
+                    con auto el ancho dependia del texto del boton de esa fila
+                    ("+ Comprobante" vs "Ver comprobante"), asi que las filas
+                    no quedaban alineadas entre si.
+                  - minmax(0,1fr) y no 1fr: en una grilla, 1fr es en realidad
+                    minmax(auto,1fr), y ese "auto" es el ancho MINIMO propio
+                    del input (unos 170px). Tres inputs que se niegan a
+                    achicarse se desbordan del panel en vez de repartirse el
+                    espacio disponible.
+                  - Las seis columnas arrancan recien en md: sin minimo, en un
+                    telefono se achicaban hasta quedar inusables. Abajo de md
+                    la fila se apila y cada campo ocupa el ancho entero. */}
+              <div className="grid items-start gap-2.5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_10rem_2.5rem_2.5rem]">
               <input
                 name="deposito_referencia"
                 placeholder="Referencia (opcional)"
@@ -445,14 +472,35 @@ export default function ItemForm({
                 visorRef={visorRef}
                 onQuitarTexto={() => actualizarFila(fila.key, "comprobanteTexto", "")}
               />
+              {/* md:contents disuelve este contenedor en la grilla: en
+                  pantalla angosta es una fila flex con los dos botones
+                  juntos, y en md cada boton vuelve a ser su propia celda. */}
+              <div className="flex gap-2.5 md:contents">
               <button
                 type="button"
                 onClick={() => setFilas((f) => f.filter((x) => x.key !== fila.key))}
-                className="h-10 rounded-[9px] border border-border px-3 text-[13.5px] text-ink-soft transition hover:bg-critical-soft hover:text-critical"
+                className="h-10 w-10 shrink-0 rounded-[9px] border border-border text-[13.5px] text-ink-soft transition hover:bg-critical-soft hover:text-critical"
                 aria-label="Quitar depósito"
               >
                 ✕
               </button>
+              {/* El + vive solo en la ultima fila: en todas seria el mismo
+                  boton repetido. Las demas dejan el hueco reservado para que
+                  la ✕ no se corra de lugar al agregar o quitar filas. */}
+              {i === filas.length - 1 ? (
+                <button
+                  type="button"
+                  onClick={() => setFilas((f) => [...f, filaVacia(proximaKey(f))])}
+                  className="h-10 w-10 shrink-0 rounded-[9px] border border-border text-[15px] text-ink-soft transition hover:bg-surface-alt hover:text-accent"
+                  aria-label="Agregar otro depósito"
+                  title="Agregar otro depósito"
+                >
+                  +
+                </button>
+              ) : (
+                <div className="hidden w-10 md:block" aria-hidden />
+              )}
+              </div>
               </div>
 
               {(fila.leido !== null || fila.avisos.length > 0) && (
@@ -462,8 +510,8 @@ export default function ItemForm({
                       Leído del comprobante: {fila.leido}
                     </span>
                   )}
-                  {fila.avisos.map((aviso, i) => (
-                    <span key={i} className="text-[11.5px] text-accent">
+                  {fila.avisos.map((aviso, n) => (
+                    <span key={n} className="text-[11.5px] text-accent">
                       {aviso}
                     </span>
                   ))}
@@ -471,10 +519,24 @@ export default function ItemForm({
               )}
             </div>
           ))}
+
+          {filas.length > 0 && (
+            <div className="mt-0.5 flex items-center justify-between border-t border-border pt-2.5 text-[12.5px] text-ink-soft">
+              <span>
+                {filas.length} {filas.length === 1 ? "depósito" : "depósitos"}
+              </span>
+              <span>
+                Total recibido:{" "}
+                <span className="text-[14px] font-medium text-ink">
+                  {formatMonto(totalOrigen, moneda)}
+                </span>
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between">
             <label className="text-[13px] font-medium text-ink-soft">
@@ -530,14 +592,17 @@ export default function ItemForm({
         <div className="flex flex-col gap-1.5">
           {/* Misma estructura de fila que Tasa y Total USDT: el dato
               secundario va a la derecha del label. */}
-          <div className="flex items-center justify-between">
+          {/* gap-2 y no justify-between a secas: cuando la columna se
+              angosta, "solo admin" se montaba encima del label. Con gap y
+              whitespace-nowrap cada uno se queda en su lugar. */}
+          <div className="flex items-center justify-between gap-2">
             <label
               htmlFor="comision_pct_vista"
               className="text-[13px] font-medium text-ink-soft"
             >
               Comisión (%)
             </label>
-            <span className="font-mono text-[10.5px] uppercase tracking-widest text-ink-soft/70">
+            <span className="whitespace-nowrap font-mono text-[10.5px] uppercase tracking-widest text-ink-soft/70">
               solo admin
             </span>
           </div>

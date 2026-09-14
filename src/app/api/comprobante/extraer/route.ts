@@ -9,6 +9,15 @@ import {
 
 const BUCKET = "comprobantes";
 
+// Vercel corta a los 300s por defecto en TODOS los planes. 30s es de sobra
+// para una extraccion y evita que una llamada colgada siga corriendo (y
+// facturando) mucho despues de que el usuario se fue.
+export const maxDuration = 30;
+
+// Presupuesto propio, mas corto que el de Vercel: preferimos devolver un
+// error util a los 20s antes que dejar la peticion colgada.
+const TIMEOUT_MS = 20_000;
+
 // Modelo de la familia Flash: es la que entra en el tier gratuito de
 // Google AI Studio (1.500 peticiones por dia, sin tarjeta).
 const MODELO = "gemini-3.8-flash";
@@ -25,7 +34,11 @@ const ESQUEMA = {
   properties: {
     referencia: {
       type: "string",
-      description: "Numero de referencia u operacion, solo digitos, sin espacios.",
+      // Decia "solo digitos" y peleaba con el prompt: los comprobantes
+      // colombianos traen referencias con letras ("TRuf1aeTHtEC") y el
+      // modelo las mutilaba para cumplir con esta descripcion.
+      description:
+        "Numero o codigo de referencia tal como aparece, con letras si las tiene.",
     },
     fecha: {
       type: "string",
@@ -47,16 +60,25 @@ const ESQUEMA = {
   },
 };
 
-const INSTRUCCIONES = `Extraes datos de comprobantes de pago movil y transferencias de Venezuela y Colombia.
+const INSTRUCCIONES = `Transcribis datos de comprobantes de pago de Venezuela y Colombia. Sos un transcriptor, no un interprete: tu trabajo es COPIAR lo que esta impreso, no razonar sobre ello.
 
-Reglas:
-- Las fechas vienen en formato dd/mm/aaaa. "10/09/2026" es 10 de septiembre, NO 9 de octubre.
-- Los montos usan punto para miles y coma para decimales: "3.200,00" son tres mil doscientos.
-- Copia "monto_texto" caracter por caracter como esta impreso, sin reformatear.
-- Si un dato no esta en el comprobante, omiti ese campo. No lo inventes ni lo deduzcas.
-- "beneficiario" es quien RECIBE, no quien envia.
+REGLA PRINCIPAL: si no podes LEER un dato con certeza en la imagen, omiti ese campo. Un campo vacio es correcto; un campo inventado corrompe la contabilidad de alguien.
 
-Extrae los datos de este comprobante.`;
+Prohibido:
+- Inventar, completar o deducir un valor que no este impreso.
+- Redondear, reformatear o "corregir" un numero.
+- Rellenar un campo con algo parecido que viste en otra parte del comprobante.
+- Usar la fecha de hoy si el comprobante no trae fecha.
+
+Como leer cada campo:
+- referencia: el numero o codigo de la operacion, tal cual, respetando ceros a la izquierda, letras y mayusculas ("M09255933", "TRuf1aeTHtEC", "062531960972"). Si hay varios numeros, el que esta etiquetado como referencia, comprobante u operacion.
+- fecha: la fecha DE LA OPERACION. Formato dd/mm/aaaa: "10/09/2026" es 10 de septiembre, NO 9 de octubre. Tambien puede venir en palabras ("24 de agosto de 2026"). Devolvela como aaaa-mm-dd.
+- monto_texto: el monto EXACTAMENTE como aparece impreso, caracter por caracter, con sus puntos y comas ("3.200,00", "$ 92.500,00"). No lo normalices.
+- monto: ese mismo monto como numero. Punto y coma latinos: "3.200,00" es 3200.00, no 3.2.
+- beneficiario: quien RECIBE el dinero, no quien lo envia.
+- banco: el banco o app del comprobante.
+
+Si la imagen esta borrosa, cortada o no es un comprobante, devolve todos los campos vacios.`;
 
 type Extraido = {
   referencia?: string;
@@ -142,25 +164,82 @@ export async function POST(request: Request) {
     );
   }
 
-  const base64 = Buffer.from(await archivo.arrayBuffer()).toString("base64");
+  const bytes = await archivo.arrayBuffer();
+  const base64 = Buffer.from(bytes).toString("base64");
   const ai = new GoogleGenAI({ apiKey });
 
   let extraido: Extraido;
+  const arranque = Date.now();
   try {
-    const interaction = await ai.interactions.create({
-      model: MODELO,
-      input: [
-        { type: "text", text: INSTRUCCIONES },
-        esPdf
-          ? { type: "document", data: base64, mime_type: "application/pdf" }
-          : { type: "image", data: base64, mime_type: tipo },
-      ],
-      response_format: {
-        type: "text",
-        mime_type: "application/json",
-        schema: ESQUEMA,
+    const interaction = await ai.interactions.create(
+      {
+        model: MODELO,
+        // Las instrucciones van como system_instruction y no mezcladas con
+        // la imagen: asi el modelo las trata como reglas y no como una
+        // parte mas del contenido a interpretar.
+        system_instruction: INSTRUCCIONES,
+        input: [
+          { type: "text", text: "Transcribi los datos de este comprobante." },
+          esPdf
+            ? { type: "document", data: base64, mime_type: "application/pdf" }
+            : { type: "image", data: base64, mime_type: tipo },
+        ],
+        generation_config: {
+          // Sin esto el modelo decide solo cuanto razonar, y ahi nace la
+          // diferencia entre 5s y 54s con la MISMA imagen. Transcribir un
+          // comprobante no necesita razonamiento: necesita leer.
+          //
+          // "low" y no "minimal": el tipo del SDK acepta los cuatro niveles,
+          // pero este modelo rechaza "minimal" con un 400 en tiempo de
+          // ejecucion ("Allowed values are: high, low, medium"). El tipo es
+          // el de la familia entera, no el de un modelo.
+          thinking_level: "low",
+          // Misma imagen, misma salida. Sin seed, dos lecturas del mismo
+          // comprobante pueden diferir, y en una app de plata eso no se
+          // puede.
+          seed: 7,
+          // Los seis campos ocupan menos de 100 tokens, pero los tokens de
+          // razonamiento salen del mismo presupuesto: con el techo muy bajo
+          // el modelo se queda pensando y devuelve un JSON cortado, que
+          // revienta despues en el JSON.parse. Se deja holgado; igual solo
+          // se paga lo que realmente genera.
+          max_output_tokens: 2048,
+        },
+        response_format: {
+          type: "text",
+          mime_type: "application/json",
+          schema: ESQUEMA,
+        },
       },
-    });
+      {
+        timeout_ms: TIMEOUT_MS,
+        // El SDK trae por defecto 4 reintentos con backoff exponencial
+        // (500ms, 1s, 2s, 4s...) sobre 408/409/429/5XX y hasta 30s de
+        // espera acumulada. Son invisibles: si el ultimo intento sale
+        // bien, no hay error, solo una peticion que tardo un minuto.
+        // Queda UN reintento corto, para un corte de red y nada mas.
+        retries: {
+          strategy: "attempt-count-backoff",
+          maxRetries: 1,
+          backoff: {
+            initialInterval: 400,
+            maxInterval: 1200,
+            exponent: 2,
+            maxElapsedTime: 3000,
+          },
+          retryConnectionErrors: true,
+        },
+      },
+    );
+
+    // Queda en los logs de la funcion. Si vuelve a tardar, aca se ve si
+    // fue el modelo pensando de mas (thought) o la imagen siendo grande.
+    console.log(
+      `[comprobante] ${Date.now() - arranque}ms · ${Math.round(bytes.byteLength / 1024)}KB · ${tipo}` +
+        ` · in ${interaction.usage?.total_input_tokens ?? "?"}` +
+        ` · thought ${interaction.usage?.total_thought_tokens ?? "?"}` +
+        ` · out ${interaction.usage?.total_output_tokens ?? "?"}`,
+    );
 
     const texto = interaction.output_text;
     if (!texto) {
@@ -172,6 +251,17 @@ export async function POST(request: Request) {
     extraido = JSON.parse(texto) as Extraido;
   } catch (e) {
     const mensaje = (e as Error).message ?? "";
+    console.log(`[comprobante] fallo a los ${Date.now() - arranque}ms: ${mensaje}`);
+
+    if (/timeout|aborted|abort/i.test(mensaje)) {
+      return NextResponse.json(
+        {
+          error:
+            "La lectura automática tardó demasiado. Cargá los datos a mano — el comprobante ya quedó guardado.",
+        },
+        { status: 504 },
+      );
+    }
 
     // El tier gratuito de Google tiene cupo por minuto y por dia, y el
     // error crudo no le dice nada al usuario. Se traduce, pero sin
@@ -186,7 +276,7 @@ export async function POST(request: Request) {
         : "Probá de nuevo en un minuto.";
       return NextResponse.json(
         {
-          error: `Se agotó el cupo de lectura automática de Google. ${cuando} Si sigue pasando, el proyecto está en el tier gratuito: activá la facturación en AI Studio para levantar el límite. Mientras tanto, cargá los datos a mano — el comprobante ya quedó guardado.`,
+          error: `Se agotó el cupo de lectura automática de Google. ${cuando} Si pasa siempre, revisá la facturación del proyecto en Google Cloud: con un saldo pendiente, la cuenta vuelve a los límites gratuitos. Mientras tanto, cargá los datos a mano — el comprobante ya quedó guardado.`,
         },
         { status: 429 },
       );
