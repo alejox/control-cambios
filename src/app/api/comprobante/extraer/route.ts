@@ -4,10 +4,16 @@ import { extraerConIA } from "@/lib/comprobante-ia";
 
 const BUCKET = "comprobantes";
 
-// Vercel corta a los 300s por defecto en TODOS los planes. 30s es de sobra
-// para una extraccion y evita que una llamada colgada siga corriendo (y
-// facturando) mucho despues de que el usuario se fue.
-export const maxDuration = 30;
+// Vercel corta a los 300s por defecto en TODOS los planes. Este numero es
+// el TECHO de los tres presupuestos que tiene una lectura, y tienen que
+// estar ordenados de mayor a menor o el de abajo mata al de arriba:
+//
+//   ruta (60s)  >  navegador (45s)  >  Gemini (18s x 2 intentos = 36s)
+//
+// Estaba en 30s mientras Gemini tenia 20s y ningun reintento. Cuando se
+// agrego el reintento nadie recalculo, asi que el segundo intento no
+// entraba y las lecturas morian canceladas sin explicacion.
+export const maxDuration = 60;
 
 // La lectura en si (prompt, esquema, modelo, parseo) vive en
 // @/lib/comprobante-ia porque el bot de Telegram hace exactamente lo mismo

@@ -21,9 +21,14 @@ import type { Moneda } from "@/lib/items";
 // Google AI Studio (1.500 peticiones por dia, sin tarjeta).
 const MODELO = "gemini-3.8-flash";
 
-// Presupuesto propio, mas corto que el de Vercel: preferimos devolver un
-// error util a los 20s antes que dejar la peticion colgada.
-const TIMEOUT_MS = 20_000;
+// Presupuesto propio, el mas chico de los tres, porque este se gasta DOS
+// veces: con maxRetries: 1 son hasta 18s + 18s = 36s, y eso todavia entra
+// en los 45s del navegador y los 60s de la ruta.
+//
+// La cuenta importa: cuando este numero era 20s los dos intentos sumaban
+// 40s contra un navegador que cortaba a los 25s, asi que el reintento
+// nunca llegaba a terminar y el usuario veia la peticion cancelada.
+const TIMEOUT_MS = 18_000;
 
 // Gemini lee estos formatos como imagen. El HEIC de iPhone no entra: se
 // avisa en vez de mandarlo igual y recibir un error opaco.

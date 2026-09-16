@@ -8,6 +8,7 @@ import ComprobanteInput from "./comprobante-input";
 import VisorComprobante, { type VisorHandle } from "../visor-comprobante";
 import PegarComprobante from "./pegar-comprobante";
 import SubirVarios, { type ComprobanteCargado } from "./subir-varios";
+import SubirManualmente from "./subir-manualmente";
 import { PAR_POR_MONEDA, type ParReferencia } from "@/lib/binance";
 import type { DatosComprobante } from "@/lib/comprobante";
 import {
@@ -396,11 +397,18 @@ export default function ItemForm({
       </div>
 
       <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
+        {/* Con tres botones la barra ya no entra de una linea en pantallas
+            chicas: el contenedor envuelve en vez de desbordar, y los botones
+            bajan juntos abajo del titulo. */}
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           <label className="text-[13px] font-medium text-ink-soft">
             Depósitos {esBs ? "(en Bs)" : "(en COP)"}
           </label>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-start justify-end gap-2">
+            {/* Los dos primeros suben archivos, pero solo "Subir varios" los
+                lee: el orden y el title de cada uno son lo unico que separa
+                dos botones que de afuera parecen lo mismo. */}
+            <SubirManualmente onAplicar={agregarDesdeArchivos} />
             <SubirVarios onAplicar={agregarDesdeArchivos} />
             <PegarComprobante moneda={moneda} onAplicar={agregarDesdeTexto} />
           </div>

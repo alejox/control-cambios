@@ -53,10 +53,17 @@ export async function leerComprobante(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ path }),
-      // Un poco mas que el presupuesto del servidor (20s), para que el
-      // corte normal traiga el mensaje del backend y este sea la red de
-      // seguridad: nadie se queda mirando "Leyendo..." para siempre.
-      signal: AbortSignal.timeout(25_000),
+      // Tiene que ser MAYOR que lo que puede tardar el servidor, o este
+      // corte se convierte en el verdugo en vez de la red de seguridad.
+      // Gemini gasta hasta 18s por intento y reintenta una vez (36s), asi
+      // que 45s deja margen para que el error util lo mande el backend y
+      // este abort sea lo ultimo que actua, no lo primero.
+      //
+      // Y no es solo cosmetico: cuando el navegador corta, la funcion de
+      // Vercel SIGUE corriendo. Gemini termina, se cobra, y el resultado se
+      // tira. Un corte prematuro es plata gastada en una lectura que nadie
+      // llega a ver.
+      signal: AbortSignal.timeout(45_000),
     });
     const cuerpo = await respuesta.json();
     if (!respuesta.ok) {

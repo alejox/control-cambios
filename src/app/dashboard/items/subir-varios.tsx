@@ -78,6 +78,9 @@ export default function SubirVarios({
         type="button"
         disabled={ocupado}
         onClick={() => inputRef.current?.click()}
+        // Aclara la diferencia con "Subir manualmente", que sube lo mismo
+        // pero no lee nada.
+        title="Sube los comprobantes y los lee automáticamente para completar referencia, fecha y monto."
         className="rounded-lg border border-border px-2.5 py-1 text-xs text-ink-soft transition hover:bg-surface-alt disabled:opacity-50"
       >
         {ocupado
