@@ -114,14 +114,19 @@ function Tarjeta({ panel }: { panel: Panel }) {
 }
 
 /**
- * Un dato con su botón de copiar, y si es secreto también el de mostrar.
+ * Un dato con su botón de copiar. Si es secreto, no se muestra nunca.
  *
- * Arranca enmascarado: la razón de existir de esta pantalla es abrirla
- * delante de otra persona para entrar a un panel, y ahí la clave no tiene
- * por qué estar a la vista de quien mire por encima del hombro.
+ * No hay botón de revelar a pedido del usuario, y el razonamiento es
+ * bueno: copiar resuelve el 100% de los casos reales —- la clave va del
+ * portapapeles al panel del proveedor, sin pasar por la pantalla -— y un
+ * botón de mostrar solo existe para que alguien lo apriete en el peor
+ * momento, con otra persona al lado.
  *
- * Copiar es lo que se usa el 90% de las veces, así que se puede sin
- * revelar nada.
+ * La única vez que la clave aparece es si el portapapeles falla. No es
+ * una puerta de atrás: sin https o sin permiso no hay forma de copiar, y
+ * entre revelarla para que se pueda seleccionar a mano o dejar un botón
+ * que no hace nada y no dice por qué, lo segundo es peor. En el dominio
+ * de la app, sobre https, esto no pasa nunca.
  */
 function Campo({
   etiqueta,
@@ -132,7 +137,7 @@ function Campo({
   valor: string;
   secreto?: boolean;
 }) {
-  const [visible, setVisible] = useState(false);
+  const [reveladaPorFallo, setReveladaPorFallo] = useState(false);
   const [copiado, setCopiado] = useState(false);
 
   useEffect(() => {
@@ -146,10 +151,7 @@ function Campo({
       await navigator.clipboard.writeText(valor);
       setCopiado(true);
     } catch {
-      // Sin https o sin permiso no hay portapapeles. Se revela el dato
-      // para que se pueda seleccionar a mano, que es mejor que un botón
-      // que no hace nada y no dice por qué.
-      setVisible(true);
+      setReveladaPorFallo(true);
     }
   }
 
@@ -157,17 +159,12 @@ function Campo({
     <div className="flex flex-wrap items-center gap-2">
       <span className={`${ETIQUETA} w-16 flex-none`}>{etiqueta}</span>
       <span className="min-w-0 flex-1 break-all font-mono text-[13px] text-ink">
-        {secreto && !visible ? "••••••••••" : valor}
+        {secreto && !reveladaPorFallo ? "••••••••••" : valor}
       </span>
-      {secreto && (
-        <button
-          type="button"
-          onClick={() => setVisible((v) => !v)}
-          aria-label={visible ? `Ocultar ${etiqueta.toLowerCase()}` : `Mostrar ${etiqueta.toLowerCase()}`}
-          className={`${BOTON_SUAVE} px-2.5 text-[12px]`}
-        >
-          {visible ? "Ocultar" : "Mostrar"}
-        </button>
+      {reveladaPorFallo && (
+        <span className="text-[11.5px] text-ink-soft">
+          No pude copiar: seleccionala a mano.
+        </span>
       )}
       <button
         type="button"
