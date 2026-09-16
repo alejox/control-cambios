@@ -107,7 +107,11 @@ export default async function VentaPublicoPage() {
         className="mb-5 inline-flex items-center gap-2 rounded-[10px] border border-border bg-surface px-3.5 py-2 text-[13px] text-ink-soft shadow-sm transition hover:text-ink"
       >
         🏦 Mis medios de cobro
-        <span className="text-ink-soft/70">· uno por moneda, para las cuatro marcas</span>
+        {/* La aclaración se cae en el teléfono: el botón entero mide más
+            que la pantalla y el nombre solo ya se entiende. */}
+        <span className="hidden text-ink-soft/70 sm:inline">
+          · uno por moneda, para las cuatro marcas
+        </span>
       </Link>
 
       {error ? (

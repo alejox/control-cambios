@@ -68,7 +68,7 @@ export default function ListaProveedor({ lista }: { lista: Lista }) {
           <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
             {lista.grupos.map((grupo) => (
               <div key={grupo.id} className="border-b border-border last:border-0">
-                <p className="bg-surface-alt/60 px-5 py-2.5 text-[13.5px] font-medium text-ink">
+                <p className="bg-surface-alt/60 px-3 py-2.5 text-[13.5px] font-medium text-ink md:px-5">
                   {grupo.titulo ?? (
                     <span className="italic text-ink-soft">
                       {grupo.nombre} — sin título en esta moneda
@@ -76,7 +76,7 @@ export default function ListaProveedor({ lista }: { lista: Lista }) {
                   )}
                 </p>
                 {grupo.planes.length === 0 ? (
-                  <p className="px-5 py-3 text-[13px] text-ink-soft">
+                  <p className="px-3 py-3 text-[13px] text-ink-soft md:px-5">
                     Este grupo no tiene planes todavía.
                   </p>
                 ) : (
@@ -84,7 +84,7 @@ export default function ListaProveedor({ lista }: { lista: Lista }) {
                     <tbody>
                       {grupo.planes.map((plan) => (
                         <tr key={plan.id} className="border-t border-border/70">
-                          <td className="px-5 py-2.5 text-ink-soft">
+                          <td className="px-3 py-2.5 text-ink-soft md:px-5">
                             {plan.etiqueta ?? (
                               <span className="italic">
                                 {plan.nombre} — sin etiqueta en esta moneda
@@ -96,10 +96,13 @@ export default function ListaProveedor({ lista }: { lista: Lista }) {
                               </span>
                             )}
                           </td>
-                          <td className="whitespace-nowrap px-5 py-2.5 text-right font-mono text-[12.5px] text-ink-soft">
+                          <td className="hidden whitespace-nowrap px-5 py-2.5 text-right font-mono text-[12.5px] text-ink-soft md:table-cell">
                             {formatUsd(plan.precioUsd)}
                           </td>
-                          <td className="w-56 px-5 py-2">
+                          {/* El w-56 se llevaba 224px de los 358 que hay en
+                              un telefono y dejaba la etiqueta en una tira de
+                              50px. Acá abajo el ancho lo pide el contenido. */}
+                          <td className="w-auto px-3 py-2 md:w-56 md:px-5">
                             <CeldaPrecio lista={lista} plan={plan} />
                           </td>
                         </tr>
@@ -221,7 +224,7 @@ function CeldaPrecio({ lista, plan }: { lista: Lista; plan: PlanLista }) {
           inputMode="numeric"
           defaultValue={formatMontoLista(precio, lista.moneda)}
           aria-label={`Precio de ${plan.nombre} en la lista de ${lista.proveedor}`}
-          className="h-9 w-28 rounded-[9px] border border-border bg-surface px-3 text-right text-[13.5px] outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+          className="h-9 w-24 rounded-[9px] border border-border bg-surface px-2.5 text-right text-[13.5px] outline-none focus:border-accent focus:ring-1 focus:ring-accent md:w-28 md:px-3"
         />
         <button
           type="submit"
