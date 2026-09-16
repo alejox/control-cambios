@@ -3,9 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { resolverDestino } from "@/lib/auth-redirects";
 
 /**
- * Adonde Supabase redirige después de un login con Google, de confirmar
- * el correo en el signup por contraseña, o de abrir el enlace de
- * recuperación enviado desde /forgot-password.
+ * Adonde Supabase redirige cuando se abre el enlace de recuperación
+ * enviado desde /forgot-password. No hay alta pública: las cuentas se
+ * crean a mano desde Supabase.
  *
  * El parámetro `next` decide dónde termina el usuario, pero pasa siempre
  * por la lista blanca de @/lib/auth-redirects.

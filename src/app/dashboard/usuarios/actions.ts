@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -140,4 +141,109 @@ export async function eliminarUsuario(
 
   revalidatePath("/dashboard/usuarios");
   return { error: null, ok: true };
+}
+
+export type InvitacionState = { error: string | null; link: string | null };
+
+/**
+ * Da de alta a alguien nuevo devolviendo un link de acceso.
+ *
+ * No se manda ningun correo: el proyecto no tiene SMTP propio y el interno de
+ * Supabase no responde, asi que el admin copia el link y se lo hace llegar al
+ * invitado por fuera. El invitado entra con rol "sin_acceso" (el default de
+ * profiles) hasta que alguien se lo cambie desde esta misma pantalla.
+ */
+export async function invitarUsuario(
+  _prevState: InvitacionState,
+  formData: FormData,
+): Promise<InvitacionState> {
+  const email = ((formData.get("email") as string) ?? "").trim();
+
+  if (!email) return { error: "Falta el correo.", link: null };
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { error: "Ese correo no tiene forma de correo.", link: null };
+  }
+
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Tu sesión venció.", link: null };
+
+  const { data: yo } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  if (yo?.role !== "admin") {
+    return { error: "Solo un administrador puede invitar usuarios.", link: null };
+  }
+
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return {
+      error: "Falta configurar SUPABASE_SERVICE_ROLE_KEY en el servidor.",
+      link: null,
+    };
+  }
+
+  const admin = createAdminClient();
+
+  // Los correos se guardan como los escribio cada uno, asi que la comparacion
+  // va sin distinguir mayusculas: si no, se invita dos veces a la misma persona.
+  const { data: existentes } = await admin
+    .from("profiles")
+    .select("id")
+    .ilike("email", email)
+    .limit(1);
+
+  if (existentes && existentes.length > 0) {
+    return {
+      error: "Ese correo ya tiene cuenta. Buscalo en la lista y asignale un rol.",
+      link: null,
+    };
+  }
+
+  // headers() es async desde Next 15; el origen sale de la request para que el
+  // link sirva igual en local que en produccion, sin una variable de entorno mas.
+  const h = await headers();
+  const host = h.get("host");
+  if (!host) {
+    return { error: "No se pudo armar el link: falta el host de la request.", link: null };
+  }
+  const proto = h.get("x-forwarded-proto") ?? "http";
+  const redirectTo = `${proto}://${host}/auth/callback?next=/update-password`;
+
+  const invitacion = await admin.auth.admin.generateLink({
+    type: "invite",
+    email,
+    options: { redirectTo },
+  });
+
+  let link = invitacion.error ? null : invitacion.data.properties.action_link;
+
+  if (!link) {
+    // El alta publica esta apagada en Supabase y el tipo "invite" cuelga de esa
+    // misma configuracion, asi que puede volver rechazado. Cuando pasa, la cuenta
+    // se crea a mano con la service_role (que no pasa por esa restriccion) y el
+    // link se pide como "recovery": termina en la misma pantalla de contraseña.
+    const { error: altaError } = await admin.auth.admin.createUser({
+      email,
+      email_confirm: true,
+    });
+    if (altaError) return { error: altaError.message, link: null };
+
+    const recuperacion = await admin.auth.admin.generateLink({
+      type: "recovery",
+      email,
+      options: { redirectTo },
+    });
+    if (recuperacion.error) return { error: recuperacion.error.message, link: null };
+
+    link = recuperacion.data.properties.action_link;
+  }
+
+  revalidatePath("/dashboard/usuarios");
+  return { error: null, link };
 }

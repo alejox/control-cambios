@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import RolSelect from "./rol-select";
 import EliminarUsuario from "./eliminar-usuario";
+import InvitarUsuario from "./invitar-usuario";
 
 type Perfil = {
   id: string;
@@ -35,21 +36,24 @@ export default async function UsuariosPage() {
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-10">
-      <div className="mb-8">
-        <p className="mb-2.5 font-mono text-[11.5px] uppercase tracking-widest text-accent">
-          Quién entra y qué puede hacer
-        </p>
-        <h1
-          className="text-[26px] font-medium text-ink"
-          style={{ fontFamily: "var(--font-display)" }}
-        >
-          Usuarios
-        </h1>
+      <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="mb-2.5 font-mono text-[11.5px] uppercase tracking-widest text-accent">
+            Quién entra y qué puede hacer
+          </p>
+          <h1
+            className="text-[26px] font-medium text-ink"
+            style={{ fontFamily: "var(--font-display)" }}
+          >
+            Usuarios
+          </h1>
+        </div>
+        <InvitarUsuario />
       </div>
 
       <div className="mb-6 rounded-2xl border border-accent-soft bg-accent-soft/30 px-5 py-4 text-[13.5px] leading-relaxed text-ink-soft">
-        Las cuentas se crean solas cuando alguien se registra en la pantalla
-        de inicio de sesión. Entran <strong className="font-medium text-ink">sin acceso</strong>{" "}
+        Las cuentas se crean por invitación desde acá: generás el link y se lo
+        hacés llegar vos. Entran <strong className="font-medium text-ink">sin acceso</strong>{" "}
         hasta que le asignes un rol acá.
         <br />
         <span className="mt-1.5 inline-block">
