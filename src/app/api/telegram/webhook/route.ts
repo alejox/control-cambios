@@ -544,6 +544,59 @@ async function leerFoto(
   };
 }
 
+/**
+ * Le avisa por Telegram a la otra parte que tiene algo para revisar.
+ *
+ * Un movimiento lo carga uno y lo aprueba el OTRO, así que el que tiene que
+ * enterarse es justamente el que no estaba mirando. El panel ya se refresca
+ * solo con Realtime, pero eso vale únicamente mientras la pestaña está
+ * abierta: si el comprobante entra de noche, esto es lo único que avisa.
+ *
+ * Va a todos los vinculados menos el autor. No hay lista de destinatarios
+ * que mantener al día: el que esté vinculado al bot, se entera.
+ *
+ * No lanza ni corta nada. Cuando esto corre el movimiento YA está guardado:
+ * que no salga el aviso es una molestia, que se pierda el comprobante porque
+ * Telegram no contestó, no.
+ */
+async function avisarALaContraparte(admin: Admin, autorId: string, texto: string) {
+  const { data: vinculos, error } = await admin
+    .from("telegram_vinculos")
+    .select("chat_id")
+    .neq("user_id", autorId);
+
+  if (error) {
+    console.error(`[telegram] no pude ver a quién avisar: ${error.message}`);
+    return;
+  }
+
+  for (const vinculo of vinculos ?? []) {
+    await enviarMensaje(Number(vinculo.chat_id), texto);
+  }
+}
+
+/**
+ * El aviso, con lo justo para decidir si vale la pena abrir el panel ahora
+ * o esperar. Sin referencias ni bancos: eso ya está del otro lado, y acá
+ * solo agregaría ruido a una notificación del teléfono.
+ */
+function avisoDeRevision(
+  numero: number | null | undefined,
+  usdt: number,
+  totalOrigen: number,
+  moneda: Moneda,
+  fecha: string,
+) {
+  return [
+    numero ? `Movimiento #${numero} para revisar` : "Movimiento nuevo para revisar",
+    "",
+    `${formatMonto(usdt, "USDT")} · ${formatMonto(totalOrigen, moneda)}`,
+    `Fecha: ${formatFecha(fecha)}`,
+    "",
+    `Lo cargó la otra parte por el bot. Revisalo acá: ${APP}/revision`,
+  ].join("\n");
+}
+
 async function procesarFoto(
   admin: Admin,
   chatId: number,
@@ -652,6 +705,12 @@ async function procesarFoto(
   }
 
   const numero = (creado as { numero?: number } | null)?.numero;
+
+  await avisarALaContraparte(
+    admin,
+    userId,
+    avisoDeRevision(numero, usdt, lectura.monto, moneda, fecha),
+  );
 
   // ---------- 7. Contar qué se entendió ----------
   const lineas = [
@@ -859,6 +918,12 @@ async function crearMovimiento(
   }
 
   const devuelto = creado as { numero?: number; item_id?: string } | null;
+
+  await avisarALaContraparte(
+    admin,
+    userId,
+    avisoDeRevision(devuelto?.numero, usdt, total, moneda, fecha),
+  );
 
   return {
     ok: true,
