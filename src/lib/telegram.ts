@@ -32,6 +32,13 @@ export type MensajeTelegram = {
   date: number;
   text?: string;
   caption?: string;
+  /**
+   * Un album (varias fotos mandadas de una) NO llega como un mensaje: llega
+   * como N updates sueltos, cada uno con su update_id, y lo UNICO que los
+   * emparenta es este campo, que comparten. Viene solo cuando la foto
+   * formaba parte de un album; una foto suelta no lo trae.
+   */
+  media_group_id?: string;
   /** Varias resoluciones de la MISMA foto, de menor a mayor. */
   photo?: FotoTelegram[];
   document?: { file_id: string; file_name?: string; mime_type?: string; file_size?: number };

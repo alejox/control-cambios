@@ -56,6 +56,20 @@ export function calcularComision(usdtTotal: number, comisionPct: number) {
 }
 
 /**
+ * El USDT de un movimiento: la SUMA de sus depositos en la moneda de origen
+ * dividida entre la tasa, redondeada a centavos.
+ *
+ * Vive aca y no adentro del formulario porque ahora hay dos puertas que
+ * hacen exactamente esta cuenta: la web y el bot de Telegram, que desde que
+ * arma albumes tambien suma varios depositos. Dos implementaciones de la
+ * misma division terminan, tarde o temprano, redondeando distinto el mismo
+ * movimiento.
+ */
+export function usdtDesdeOrigen(totalOrigen: number, tasa: number): number {
+  return Math.round((totalOrigen / tasa) * 100) / 100;
+}
+
+/**
  * Reparte un total entre varias partes segun sus pesos, garantizando que la
  * suma de las partes sea EXACTAMENTE el total.
  *

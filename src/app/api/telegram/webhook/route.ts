@@ -9,6 +9,7 @@ import {
   formatFecha,
   formatMonto,
   monedaDeFlujo,
+  usdtDesdeOrigen,
   type Moneda,
 } from "@/lib/items";
 import {
@@ -18,7 +19,7 @@ import {
   type MensajeTelegram,
   type UpdateTelegram,
 } from "@/lib/telegram";
-import type { DatosComprobante } from "@/lib/comprobante";
+import { parseComprobantesTexto, type DatosComprobante } from "@/lib/comprobante";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 // Bajar la foto, leerla con Gemini y consultar la tasa se hacen en linea,
@@ -108,7 +109,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    await manejar(admin, chatId, mensaje);
+    await manejar(admin, chatId, mensaje, update.update_id);
   } catch (e) {
     // Nada de lo que pase acá adentro puede volverse un 500: seria un
     // reintento de Telegram sobre un update que quizas ya creo el
@@ -136,20 +137,31 @@ function leerComando(texto: string, comando: string): string | null {
   return (m[2] ?? "").trim();
 }
 
-const AYUDA = `Mandame la foto de un comprobante y la cargo como movimiento pendiente de revisión.
+const AYUDA = `Mandame un comprobante y lo cargo como movimiento pendiente de revisión.
 
-Qué hago con ella:
-· la guardo junto al movimiento,
+Cómo mandármelo:
+· como foto,
+· o pegado como texto, tal cual lo copia la app del banco.
+
+Si mandás varios de una (varias fotos juntas, o varios comprobantes pegados en el mismo mensaje) los cargo como UN movimiento con varios depósitos.
+
+Qué hago con cada uno:
+· lo guardo junto al movimiento,
 · le leo monto, fecha y referencia,
 · uso la tasa de referencia del momento como valor provisorio.
 
 Después la contraparte lo revisa desde la web y ajusta el USDT si hace falta.
 
-Si no puedo distinguir la moneda, escribime "COP" o "Bs" como texto de la foto.
+Si no puedo distinguir la moneda, escribime "COP" o "Bs" junto al comprobante.
 
 Panel: ${APP}`;
 
-async function manejar(admin: Admin, chatId: number, mensaje: MensajeTelegram) {
+async function manejar(
+  admin: Admin,
+  chatId: number,
+  mensaje: MensajeTelegram,
+  updateId: number,
+) {
   const { data: vinculo } = await admin
     .from("telegram_vinculos")
     .select("user_id")
@@ -176,6 +188,14 @@ async function manejar(admin: Admin, chatId: number, mensaje: MensajeTelegram) {
   // Telegram reintentaría.
   try {
     if (mensaje.photo && mensaje.photo.length > 0) {
+      // Una foto con media_group_id es una pieza de un album: se procesa
+      // igual, pero el movimiento lo arma una sola de las invocaciones con
+      // TODAS las piezas. Sin media_group_id nada cambia: una foto, un
+      // movimiento, exactamente como antes.
+      if (mensaje.media_group_id) {
+        await procesarPiezaDeAlbum(admin, chatId, userId, mensaje, mensaje.media_group_id, updateId);
+        return;
+      }
       await procesarFoto(admin, chatId, userId, mensaje);
       return;
     }
@@ -202,7 +222,27 @@ async function manejar(admin: Admin, chatId: number, mensaje: MensajeTelegram) {
       return;
     }
 
-    await enviarMensaje(chatId, "No entendí. Mandame la foto de un comprobante, o /ayuda.");
+    // Cualquier otra cosa que arranque con "/" es un comando que no existe,
+    // no un comprobante. Se corta acá para que un /loquesea no termine
+    // contestando "no le encontré el monto", y para que agregar un comando
+    // nuevo no dependa de que el parser de texto lo ignore.
+    if (texto.startsWith("/")) {
+      await enviarMensaje(chatId, "No conozco ese comando. Probá con /ayuda.");
+      return;
+    }
+
+    // Un texto que no es comando puede ser un comprobante pegado: las apps
+    // de los bancos comparten así. Va DESPUÉS de los comandos a propósito,
+    // porque /vincular, /start y /ayuda también son mensajes de texto.
+    if (texto !== "") {
+      await procesarTexto(admin, chatId, userId, texto);
+      return;
+    }
+
+    await enviarMensaje(
+      chatId,
+      "No entendí. Mandame la foto de un comprobante o pegámelo como texto, o /ayuda.",
+    );
   } catch (e) {
     console.error(`[telegram] error con un chat vinculado: ${(e as Error).message}`);
     await enviarMensaje(
@@ -302,6 +342,22 @@ const BANCOS_COP = [
 ];
 
 /**
+ * La moneda que declara un texto escrito por la persona.
+ *
+ * Vive aparte porque se aplica en dos momentos: al caption de una foto, y
+ * — cuando la foto viene en un álbum — al caption del álbum entero.
+ * Telegram le pone el caption a UNA sola de las N fotos, así que leerlo
+ * solo por foto dejaría a las otras sin la moneda que la persona escribió
+ * para todas.
+ */
+function monedaDeTexto(texto: string): Moneda | null {
+  const nota = texto.toLowerCase();
+  if (/\b(bs|bss|ves|bol[ií]var(es)?)\b/.test(nota)) return "VES";
+  if (/\b(cop|peso|pesos)\b/.test(nota)) return "COP";
+  return null;
+}
+
+/**
  * Qué moneda es este comprobante.
  *
  * Es LA decisión del bot: de la moneda salen el tipo de flujo, la tasa y,
@@ -319,9 +375,8 @@ function determinarMoneda(
 ): Moneda | null {
   // 1. Lo que escribió la persona junto a la foto gana siempre: es la única
   //    fuente que sabe lo que quiso hacer.
-  const nota = caption.toLowerCase();
-  if (/\b(bs|bss|ves|bol[ií]var(es)?)\b/.test(nota)) return "VES";
-  if (/\b(cop|peso|pesos)\b/.test(nota)) return "COP";
+  const delCaption = monedaDeTexto(caption);
+  if (delCaption) return delCaption;
 
   // 2. Lo que leyó el modelo mirando el comprobante.
   if (datos.moneda === "VES" || datos.moneda === "COP") return datos.moneda;
@@ -353,12 +408,54 @@ function hoyISO() {
   return ahora.toISOString().slice(0, 10);
 }
 
-async function procesarFoto(
+/** Cuando ni la foto ni el álbum dicen la moneda. Un solo texto para las dos puertas. */
+const SIN_MONEDA =
+  'No pude distinguir si ese comprobante está en bolívares o en pesos, y de eso depende la tasa. No cargué nada.\n\nReenviámelo escribiendo "Bs" o "COP" como texto de la foto, o cargalo desde la web: ' +
+  APP;
+
+/**
+ * El resultado de mirar UNA foto.
+ *
+ * La moneda puede volver en null a propósito: cuando la foto es parte de un
+ * álbum, todavía puede resolverla el caption del álbum, que Telegram le
+ * pone a una sola de las N fotos.
+ */
+type LecturaFoto =
+  | {
+      ok: true;
+      datos: DatosComprobante;
+      /** Ya validado mayor que cero: el resto del camino no vuelve a dudarlo. */
+      monto: number;
+      moneda: Moneda | null;
+      path: string;
+    }
+  | {
+      ok: false;
+      /** Corto, para listar varias fotos juntas en un mismo mensaje. */
+      motivo: string;
+      /** Completo, para cuando la foto vino sola y el mensaje es solo suyo. */
+      mensaje: string;
+      /** No siempre es null: el comprobante puede haberse guardado antes de fallar. */
+      path: string | null;
+    };
+
+/**
+ * Lo caro de una foto: bajarla, guardarla en el bucket y leerla con el
+ * modelo.
+ *
+ * Está separado del resto porque ahora hay dos caminos que hacen
+ * exactamente esto (la foto suelta y cada pieza de un álbum) y porque en un
+ * álbum cada invocación hace LA SUYA en paralelo: es la parte que tarda, y
+ * hacerlas en serie multiplicaría el tiempo por la cantidad de fotos.
+ *
+ * No contesta nada por el chat: cada camino decide qué contar y cuándo. El
+ * álbum, por ejemplo, junta todo en un solo mensaje al final.
+ */
+async function leerFoto(
   admin: Admin,
-  chatId: number,
   userId: string,
   mensaje: MensajeTelegram,
-) {
+): Promise<LecturaFoto> {
   const caption = (mensaje.caption ?? "").trim();
 
   // Telegram manda la misma foto en varias resoluciones, de menor a mayor.
@@ -373,11 +470,14 @@ async function procesarFoto(
     archivo = await descargarArchivo(file_path);
   } catch (e) {
     console.error(`[telegram] no se pudo bajar la foto: ${(e as Error).message}`);
-    await enviarMensaje(
-      chatId,
-      "No pude bajar esa foto de Telegram. Probá mandarla de nuevo o cargala desde la web: " + APP,
-    );
-    return;
+    return {
+      ok: false,
+      motivo: "no la pude bajar de Telegram",
+      mensaje:
+        "No pude bajar esa foto de Telegram. Probá mandarla de nuevo o cargala desde la web: " +
+        APP,
+      path: null,
+    };
   }
 
   // ---------- 2. Guardarla ----------
@@ -392,37 +492,41 @@ async function procesarFoto(
 
   if (errorSubida) {
     console.error(`[telegram] no se pudo guardar el comprobante: ${errorSubida.message}`);
-    await enviarMensaje(
-      chatId,
-      "No pude guardar el comprobante. No cargué nada: probá de nuevo o usá la web: " + APP,
-    );
-    return;
+    return {
+      ok: false,
+      motivo: "no pude guardar el archivo",
+      mensaje: "No pude guardar el comprobante. No cargué nada: probá de nuevo o usá la web: " + APP,
+      path: null,
+    };
   }
 
   // ---------- 3. Leerla ----------
   const lectura = await extraerConIA(archivo);
 
   if (!lectura.ok) {
-    await enviarMensaje(
-      chatId,
-      `No pude leer ese comprobante.\n\n${lectura.error}\n\nNo cargué ningún movimiento. El archivo quedó guardado: cargalo desde la web y elegilo del bucket, o mandámelo de nuevo. ${APP}`,
-    );
-    return;
+    return {
+      ok: false,
+      motivo: lectura.error,
+      mensaje: `No pude leer ese comprobante.\n\n${lectura.error}\n\nNo cargué ningún movimiento. El archivo quedó guardado: cargalo desde la web y elegilo del bucket, o mandámelo de nuevo. ${APP}`,
+      path: destino,
+    };
   }
 
   const datos = lectura.datos;
 
   // Un movimiento sin monto es un movimiento inventado. Se corta acá.
   if (datos.monto === null || !(datos.monto > 0)) {
-    await enviarMensaje(
-      chatId,
-      "Leí el comprobante pero no pude sacarle el monto, así que no cargué nada: un movimiento con datos a medias es peor que ninguno.\n\nCargalo desde la web: " +
+    return {
+      ok: false,
+      motivo: "no pude leerle el monto",
+      mensaje:
+        "Leí el comprobante pero no pude sacarle el monto, así que no cargué nada: un movimiento con datos a medias es peor que ninguno.\n\nCargalo desde la web: " +
         APP,
-    );
-    return;
+      path: destino,
+    };
   }
 
-  // ---------- 4. Moneda y flujo ----------
+  // ---------- 4. Moneda ----------
   const { data: perfil } = await admin
     .from("profiles")
     .select("role")
@@ -430,14 +534,35 @@ async function procesarFoto(
     .maybeSingle();
 
   const esColaborador = perfil?.role === "colaborador";
-  const moneda = determinarMoneda(datos, caption, esColaborador);
+
+  return {
+    ok: true,
+    datos,
+    monto: datos.monto,
+    moneda: determinarMoneda(datos, caption, esColaborador),
+    path: destino,
+  };
+}
+
+async function procesarFoto(
+  admin: Admin,
+  chatId: number,
+  userId: string,
+  mensaje: MensajeTelegram,
+) {
+  const caption = (mensaje.caption ?? "").trim();
+
+  const lectura = await leerFoto(admin, userId, mensaje);
+  if (!lectura.ok) {
+    await enviarMensaje(chatId, lectura.mensaje);
+    return;
+  }
+
+  const { datos, moneda } = lectura;
+  const destino = lectura.path;
 
   if (!moneda) {
-    await enviarMensaje(
-      chatId,
-      'No pude distinguir si ese comprobante está en bolívares o en pesos, y de eso depende la tasa. No cargué nada.\n\nReenviámelo escribiendo "Bs" o "COP" como texto de la foto, o cargalo desde la web: ' +
-        APP,
-    );
+    await enviarMensaje(chatId, SIN_MONEDA);
     return;
   }
 
@@ -479,11 +604,13 @@ async function procesarFoto(
     return;
   }
 
-  const usdt = Math.round((datos.monto / tasa) * 100) / 100;
+  // La MISMA cuenta que hace el formulario de la web (usdtDesdeOrigen):
+  // total en moneda de origen ÷ tasa, redondeado a centavos.
+  const usdt = usdtDesdeOrigen(lectura.monto, tasa);
   if (!(usdt > 0)) {
     await enviarMensaje(
       chatId,
-      `Ese monto (${formatMonto(datos.monto, moneda)}) contra la tasa de referencia da menos de un centavo de USDT. No cargué nada.`,
+      `Ese monto (${formatMonto(lectura.monto, moneda)}) contra la tasa de referencia da menos de un centavo de USDT. No cargué nada.`,
     );
     return;
   }
@@ -506,7 +633,7 @@ async function procesarFoto(
       {
         referencia: datos.referencia,
         fecha,
-        valor_origen: datos.monto,
+        valor_origen: lectura.monto,
         comprobante_path: destino,
         comprobante_texto: null,
       },
@@ -530,7 +657,7 @@ async function procesarFoto(
   const lineas = [
     numero ? `Movimiento #${numero} cargado — pendiente de revisión.` : "Movimiento cargado — pendiente de revisión.",
     "",
-    `Monto: ${formatMonto(datos.monto, moneda)}`,
+    `Monto: ${formatMonto(lectura.monto, moneda)}`,
     `Fecha: ${formatFecha(fecha)}${datos.fecha ? "" : " (no la leí en el comprobante, usé la de hoy)"}`,
     `Referencia: ${datos.referencia ?? "no la pude leer"}`,
   ];
@@ -551,4 +678,722 @@ async function procesarFoto(
   lineas.push("", APP);
 
   await enviarMensaje(chatId, lineas.join("\n"));
+}
+
+// ============================================================
+// Varios comprobantes, UN movimiento
+// ============================================================
+//
+// Dos caminos llegan acá: un álbum de Telegram (N fotos) y un mensaje de
+// texto con N comprobantes pegados. Los dos terminan en lo mismo — un
+// item con varios depósitos colgando — que es exactamente lo que ya hace
+// el formulario de la web, así que comparten todo desde este punto.
+
+/** Un depósito ya listo para entrar a un movimiento. */
+type PiezaLista = {
+  /** Posición dentro de lo que mandó la persona, para poder nombrarla en el chat. */
+  orden: number;
+  monto: number;
+  moneda: Moneda;
+  /** yyyy-mm-dd. Nunca null: si el comprobante no la traía, es la de hoy. */
+  fecha: string;
+  /** false = la fecha no estaba en el comprobante y se puso la de hoy. */
+  fechaLeida: boolean;
+  referencia: string | null;
+  banco: string | null;
+  comprobante_path: string | null;
+  comprobante_texto: string | null;
+  avisos: string[];
+  /** Solo en el camino del álbum: con qué fila de telegram_piezas se corresponde. */
+  updateId?: number;
+};
+
+/** Lo que la persona mandó pero no entró a ningún movimiento. */
+type PiezaAfuera = {
+  orden: number;
+  motivo: string;
+  /** El archivo alcanzó a guardarse en el bucket y se puede rescatar desde la web. */
+  guardado: boolean;
+};
+
+type MovimientoArmado = {
+  numero: number | null;
+  itemId: string | null;
+  moneda: Moneda;
+  fecha: string;
+  fechasDistintas: boolean;
+  total: number;
+  tasa: number;
+  etiquetaTasa: string;
+  usdt: number;
+  piezas: PiezaLista[];
+};
+
+const NOMBRE_MONEDA: Record<Moneda, string> = { VES: "bolívares", COP: "pesos" };
+
+/** "ese comprobante" / "esos 3 comprobantes", para que los mensajes concuerden. */
+function esosComprobantes(n: number) {
+  return n === 1 ? "ese comprobante" : `esos ${n} comprobantes`;
+}
+
+// Orden fijo para que, cuando haya que partir por moneda, el resultado no
+// dependa del orden en que llegaron las fotos.
+const ORDEN_MONEDAS: Moneda[] = ["VES", "COP"];
+
+/**
+ * Arma UN movimiento con todos los depósitos de una misma moneda.
+ *
+ * No contesta nada por el chat: devuelve qué pasó y quien llama junta todo
+ * en un solo mensaje.
+ */
+async function crearMovimiento(
+  admin: Admin,
+  userId: string,
+  moneda: Moneda,
+  piezas: PiezaLista[],
+  caption: string,
+): Promise<{ ok: true; movimiento: MovimientoArmado } | { ok: false; mensaje: string }> {
+  const total = piezas.reduce((acc, p) => acc + p.monto, 0);
+
+  // LA FECHA DEL MOVIMIENTO es la más vieja de sus depósitos. Ordenar
+  // strings yyyy-mm-dd alcanza: el orden alfabético es el cronológico.
+  //
+  // Se elige la más vieja y no "la de la primera pieza" porque el orden en
+  // que Telegram entrega las fotos de un álbum no está garantizado, y la
+  // fecha del movimiento no puede depender de eso. Cada depósito conserva
+  // SU fecha real, así que si el bloque cruza días se ve en el panel.
+  const fechas = piezas.map((p) => p.fecha).sort();
+  const fecha = fechas[0];
+  const fechasDistintas = fechas[0] !== fechas[fechas.length - 1];
+
+  // LA TASA se consulta UNA sola vez, acá, en el momento de armar el
+  // movimiento, y no se guarda la que hubiera visto la primera pieza.
+  //
+  // Por dos razones. La primera es de corrección: la tasa se pide para una
+  // FECHA (la TRM de COP es una serie por día), y la fecha del movimiento
+  // recién se conoce cuando están todas las piezas. Una tasa consultada por
+  // una pieza suelta sería la de la fecha de ESA pieza, que puede no ser la
+  // del movimiento. La segunda es de costo: una consulta por movimiento en
+  // lugar de una por foto, contra dos fuentes externas y gratuitas.
+  let tasa: number;
+  let etiquetaTasa: string;
+  try {
+    const { fuente, fresca } = await obtenerFuenteTasa(PAR_POR_MONEDA[moneda], fecha);
+    tasa = fuente.valor;
+    etiquetaTasa = `${fuente.etiqueta} · ${fuente.detalle}`;
+
+    // Misma regla que la web y que el camino de la foto suelta: la muestra
+    // del P2P se guarda porque es efímera, la TRM no porque ya es serie.
+    if (fresca && fuente.id === "p2p") {
+      await admin.from("tasas_referencia").insert({
+        par: PAR_POR_MONEDA[moneda],
+        valor: fuente.valor,
+        consultado_at: new Date().toISOString(),
+      });
+    }
+  } catch (e) {
+    console.error(`[telegram] sin tasa de referencia: ${(e as Error).message}`);
+    return {
+      ok: false,
+      mensaje: `No pude conseguir la tasa de referencia para ${NOMBRE_MONEDA[moneda]}, así que ${esosComprobantes(piezas.length)} NO quedaron cargados (sin tasa, el USDT sería inventado). Probá de nuevo en un rato o cargalos desde la web.`,
+    };
+  }
+
+  if (!(tasa > 0)) {
+    return {
+      ok: false,
+      mensaje: `La tasa de referencia de ${NOMBRE_MONEDA[moneda]} volvió en cero, así que ${esosComprobantes(piezas.length)} NO quedaron cargados.`,
+    };
+  }
+
+  // La MISMA cuenta que hace el formulario de la web (usdtDesdeOrigen):
+  // la SUMA de los depósitos dividida entre la tasa, redondeada a centavos.
+  // Una sola tasa para todo el movimiento, un solo redondeo sobre el total.
+  const usdt = usdtDesdeOrigen(total, tasa);
+  if (!(usdt > 0)) {
+    return {
+      ok: false,
+      mensaje: `${esosComprobantes(piezas.length)} (${formatMonto(total, moneda)}) contra la tasa de referencia ${piezas.length === 1 ? "da" : "dan"} menos de un centavo de USDT. No cargué nada.`,
+    };
+  }
+
+  const tipoFlujo = flujoDeMoneda(moneda);
+  const bancos = [...new Set(piezas.map((p) => p.banco).filter((b): b is string => Boolean(b)))];
+  const detalle = [
+    "Cargado por Telegram",
+    piezas.length > 1 ? `${piezas.length} comprobantes` : null,
+    bancos.join(" / ") || null,
+    caption || null,
+  ]
+    .filter((p): p is string => Boolean(p && p.trim()))
+    .join(" · ")
+    .slice(0, 300);
+
+  // Una sola llamada con el array COMPLETO de depósitos: crear_item_desde_bot
+  // ya lo acepta, es la misma forma en la que la web guarda un movimiento con
+  // varios depósitos. No hace falta ninguna función nueva.
+  const { data: creado, error: errorRpc } = await admin.rpc("crear_item_desde_bot", {
+    p_user_id: userId,
+    p_tipo_flujo: tipoFlujo,
+    p_moneda_origen: monedaDeFlujo(tipoFlujo),
+    p_tasa: tasa,
+    p_usdt_total: usdt,
+    p_detalle: detalle,
+    p_fecha: fecha,
+    p_depositos: piezas.map((p) => ({
+      referencia: p.referencia,
+      fecha: p.fecha,
+      valor_origen: p.monto,
+      comprobante_path: p.comprobante_path,
+      comprobante_texto: p.comprobante_texto,
+    })),
+  });
+
+  if (errorRpc) {
+    console.error(`[telegram] la base rechazó el movimiento: ${errorRpc.message}`);
+    // El mensaje de la función ya está escrito para una persona.
+    return {
+      ok: false,
+      mensaje: `No pude cargar ${esosComprobantes(piezas.length)}: ${errorRpc.message}`,
+    };
+  }
+
+  const devuelto = creado as { numero?: number; item_id?: string } | null;
+
+  return {
+    ok: true,
+    movimiento: {
+      numero: devuelto?.numero ?? null,
+      itemId: devuelto?.item_id ?? null,
+      moneda,
+      fecha,
+      fechasDistintas,
+      total,
+      tasa,
+      etiquetaTasa,
+      usdt,
+      piezas,
+    },
+  };
+}
+
+/** Cómo se lee un depósito en la lista del chat. */
+function lineaDeposito(p: PiezaLista): string {
+  const partes = [
+    `${p.orden}. ${formatMonto(p.monto, p.moneda)}`,
+    formatFecha(p.fecha) + (p.fechaLeida ? "" : " (la de hoy)"),
+    p.referencia ? `ref ${p.referencia}` : "sin referencia",
+  ];
+  if (p.banco) partes.push(p.banco);
+  return partes.join(" · ");
+}
+
+/**
+ * Agrupa por moneda, crea un movimiento por grupo y manda UN SOLO mensaje
+ * con todo lo que pasó.
+ *
+ * Un mensaje y no uno por movimiento: la persona mandó un bloque y espera
+ * una respuesta, y el bot tiene que dejarle claro qué quedó cargado sin que
+ * tenga que abrir la app.
+ */
+async function armarYContar(
+  admin: Admin,
+  chatId: number,
+  userId: string,
+  listas: PiezaLista[],
+  afuera: PiezaAfuera[],
+  encabezado: string[],
+  caption: string,
+): Promise<MovimientoArmado[]> {
+  const lineas: string[] = [...encabezado];
+
+  // Monedas distintas en el mismo bloque: NO se adivina cuál valía. Un
+  // movimiento tiene UNA moneda de origen (de ahí salen el tipo de flujo y
+  // la tasa), así que mezclarlas en uno solo es imposible, y elegir una
+  // cargaría la mitad de la plata en el flujo equivocado. Se arma uno por
+  // moneda y se avisa, que es lo único honesto: nada se pierde y la
+  // persona ve que el bloque venía mezclado.
+  const porMoneda = ORDEN_MONEDAS.map((m) => ({
+    moneda: m,
+    piezas: listas.filter((p) => p.moneda === m),
+  })).filter((g) => g.piezas.length > 0);
+
+  if (porMoneda.length > 1) {
+    lineas.push(
+      "Ojo: en ese bloque hay comprobantes en bolívares Y en pesos, y un movimiento tiene una sola moneda. No adiviné cuál querías: armé uno por moneda.",
+      "",
+    );
+  }
+
+  const armados: MovimientoArmado[] = [];
+
+  for (const grupo of porMoneda) {
+    const resultado = await crearMovimiento(admin, userId, grupo.moneda, grupo.piezas, caption);
+
+    if (!resultado.ok) {
+      lineas.push(resultado.mensaje, "");
+      continue;
+    }
+
+    const m = resultado.movimiento;
+    armados.push(m);
+
+    lineas.push(
+      m.numero
+        ? `Movimiento #${m.numero} cargado — pendiente de revisión.`
+        : "Movimiento cargado — pendiente de revisión.",
+    );
+
+    if (m.piezas.length > 1) {
+      lineas.push(
+        `${m.piezas.length} comprobantes en un solo movimiento.`,
+        "",
+        `Total: ${formatMonto(m.total, m.moneda)}`,
+        `Fecha: ${formatFecha(m.fecha)}`,
+      );
+    } else {
+      const unica = m.piezas[0];
+      lineas.push(
+        "",
+        `Monto: ${formatMonto(m.total, m.moneda)}`,
+        `Fecha: ${formatFecha(m.fecha)}${unica.fechaLeida ? "" : " (no la leí en el comprobante, usé la de hoy)"}`,
+        `Referencia: ${unica.referencia ?? "no la pude leer"}`,
+      );
+      if (unica.banco) lineas.push(`Banco: ${unica.banco}`);
+    }
+
+    lineas.push(
+      `Tasa: ${formatMonto(m.tasa, m.moneda)} (${m.etiquetaTasa})`,
+      `USDT: ${formatMonto(m.usdt, "USDT")}`,
+    );
+
+    if (m.piezas.length > 1) {
+      lineas.push("", "Depósitos:", ...m.piezas.map(lineaDeposito));
+      if (m.fechasDistintas) {
+        lineas.push(
+          "",
+          `Los comprobantes no son todos del mismo día: apliqué la tasa del ${formatFecha(m.fecha)} a todo el movimiento.`,
+        );
+      }
+    }
+
+    lineas.push("");
+  }
+
+  // Lo que quedó afuera va SIEMPRE y con nombre: un movimiento armado a
+  // medias en silencio es plata que nadie va a buscar.
+  if (afuera.length > 0) {
+    lineas.push(
+      afuera.length === 1
+        ? "Uno de los comprobantes quedó afuera:"
+        : `${afuera.length} comprobantes quedaron afuera:`,
+      ...afuera.map(
+        (p) =>
+          `· Comprobante ${p.orden}: ${p.motivo}.` +
+          (p.guardado ? " El archivo quedó guardado: cargalo desde la web eligiéndolo del bucket." : ""),
+      ),
+      "",
+    );
+  }
+
+  if (armados.length > 0) {
+    lineas.push("La tasa es PROVISORIA: la contraparte la ajusta cuando lo revise.");
+  }
+
+  // Los avisos de la lectura (un monto dudoso, una fecha rara) van sí o sí:
+  // es lo que hay que mirar antes de aprobar. Se deduplican porque el mismo
+  // aviso se repite en varios comprobantes del mismo banco.
+  const avisos = [...new Set(listas.flatMap((p) => p.avisos))];
+  if (avisos.length > 0) {
+    lineas.push("", "Ojo:", ...avisos.map((a) => `· ${a}`));
+  }
+
+  lineas.push("", APP);
+
+  // Telegram rechaza los mensajes de más de 4096 caracteres, y ahí no se
+  // pierde solo el texto: el movimiento YA está cargado y la persona se
+  // quedaría sin enterarse. Con un álbum de 10 fotos y sus avisos el
+  // mensaje puede acercarse, así que se recorta antes de mandarlo.
+  const texto = lineas.join("\n");
+  const cuerpo =
+    texto.length > 4000 ? `${texto.slice(0, 3900)}\n\n(…corté el resto)\n\n${APP}` : texto;
+
+  await enviarMensaje(chatId, cuerpo);
+  return armados;
+}
+
+// ------------------------------------------------------------
+// El camino del álbum
+// ------------------------------------------------------------
+
+/**
+ * Cuánto se espera a las fotos hermanas antes de intentar armar el grupo.
+ *
+ * Telegram entrega las N fotos de un álbum como N updates independientes y
+ * NO dice cuántas son. No existe forma de saber que "ya llegaron todas":
+ * lo único que se puede hacer es esperar un rato y armar con lo que haya.
+ *
+ * 3 segundos: las invocaciones arrancan casi juntas y hacen el mismo
+ * trabajo (bajar, guardar, leer), así que terminan con pocos cientos de
+ * milisegundos de diferencia entre ellas; 3s cubre esa dispersión con
+ * margen. Estirarlo no compra casi nada y acerca la invocación al techo de
+ * 60s. Si aun así una llega tarde, no se pierde: se carga aparte y se avisa.
+ */
+const VENTANA_ALBUM_MS = 3_000;
+
+function esperar(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+const COLUMNAS_PIEZA =
+  "update_id, estado, motivo, comprobante_path, monto, fecha, referencia, moneda, banco, caption, avisos, item_numero";
+
+type FilaPieza = {
+  update_id: number;
+  estado: string;
+  motivo: string | null;
+  comprobante_path: string | null;
+  monto: number | null;
+  fecha: string | null;
+  referencia: string | null;
+  moneda: Moneda | null;
+  banco: string | null;
+  caption: string | null;
+  avisos: string[] | null;
+  item_numero: number | null;
+};
+
+/**
+ * Una foto de un álbum.
+ *
+ * Un álbum NO es un mensaje: son N updates sueltos que solo comparten el
+ * media_group_id, y cada uno puede caer en una invocación distinta, en
+ * paralelo y en otra máquina. No hay ningún lugar en memoria donde
+ * juntarlos, así que la coordinación va por la base.
+ */
+async function procesarPiezaDeAlbum(
+  admin: Admin,
+  chatId: number,
+  userId: string,
+  mensaje: MensajeTelegram,
+  mediaGroupId: string,
+  updateId: number,
+) {
+  // ---------- 1. Mi propia foto ----------
+  // Cada invocación hace LA SUYA, y todas al mismo tiempo: bajar el archivo
+  // y leerlo con el modelo es lo único caro de todo esto (hasta 20s), y
+  // hacerlo en serie multiplicaría el tiempo por la cantidad de fotos.
+  const lectura = await leerFoto(admin, userId, mensaje);
+
+  const comun = {
+    media_group_id: mediaGroupId,
+    update_id: updateId,
+    chat_id: chatId,
+    user_id: userId,
+    caption: (mensaje.caption ?? "").trim() || null,
+  };
+
+  // ---------- 2. Guardarla como pieza del grupo ----------
+  // Las que fallaron se guardan igual, con el motivo: una foto que no entra
+  // al movimiento hay que contarla en el chat, no dejarla desaparecer.
+  const { error: errorPieza } = await admin.from("telegram_piezas").insert(
+    lectura.ok
+      ? {
+          ...comun,
+          estado: "lista",
+          comprobante_path: lectura.path,
+          monto: lectura.monto,
+          // Se guarda tal cual vino: null significa "el comprobante no la
+          // traía". La de hoy se pone recién al armar, y así el chat puede
+          // decir cuál se leyó y cuál se supuso.
+          fecha: lectura.datos.fecha,
+          referencia: lectura.datos.referencia,
+          moneda: lectura.moneda,
+          banco: lectura.datos.banco,
+          avisos: lectura.datos.avisos,
+        }
+      : {
+          ...comun,
+          estado: "fallida",
+          motivo: lectura.motivo,
+          comprobante_path: lectura.path,
+        },
+  );
+
+  if (errorPieza) {
+    console.error(`[telegram] no se pudo guardar la pieza del álbum: ${errorPieza.message}`);
+    // Si la pieza no quedó en la base, ninguna hermana la va a ver y nadie
+    // más la va a contar: acá es el último lugar donde todavía se sabe de
+    // ella.
+    await enviarMensaje(
+      chatId,
+      "No pude registrar una de las fotos de ese bloque, así que esa quedó sin cargar. Mandámela sola o cargala desde la web: " +
+        APP,
+    );
+    return;
+  }
+
+  // ---------- 3. La ventana ----------
+  // Se espera a que las hermanas terminen de guardar lo suyo. Sin esta
+  // espera, la primera en llegar armaría el movimiento con una sola foto y
+  // el resto quedaría como piezas tardías: el álbum se partiría siempre.
+  await esperar(VENTANA_ALBUM_MS);
+
+  // ---------- 4. El candado ----------
+  // Un ÚNICO update condicional, que es atómico por definición: Postgres
+  // bloquea cada fila y la invocación que llega segunda vuelve a evaluar el
+  // where contra la fila YA actualizada, ve armado_at no nulo y la saltea.
+  // Se lleva cero filas y se va sin hacer nada.
+  //
+  // Leer primero y marcar después no serviría: entre la lectura y la marca
+  // las dos se creerían ganadoras y cargarían la misma plata dos veces. Es
+  // el mismo truco con el que /vincular quema un código de un solo uso.
+  //
+  // Se marca ANTES de crear el movimiento, con el mismo criterio que la
+  // idempotencia por update_id: si el proceso muere en el medio, el bloque
+  // queda sin cargar y se resuelve reenviándolo. Al revés —- crear primero
+  // y marcar después —- un corte en el medio deja el movimiento cargado Y
+  // el grupo libre, y la siguiente invocación lo carga de nuevo.
+  const { data: mias, error: errorCandado } = await admin
+    .from("telegram_piezas")
+    .update({ armado_at: new Date().toISOString() })
+    .eq("media_group_id", mediaGroupId)
+    .is("armado_at", null)
+    .select(COLUMNAS_PIEZA);
+
+  if (errorCandado) {
+    console.error(`[telegram] no se pudo tomar el grupo: ${errorCandado.message}`);
+    await enviarMensaje(
+      chatId,
+      "No pude terminar de armar ese bloque. Fijate en el panel si quedó cargado antes de reintentar: " +
+        APP,
+    );
+    return;
+  }
+
+  // Cero filas = otra invocación se quedó con el grupo (con mi pieza
+  // incluida) y va a contestar ella. Esta se va en silencio: dos mensajes
+  // por el mismo bloque confundirían más de lo que aclaran.
+  if (!mias || mias.length === 0) return;
+
+  await armarAlbum(admin, chatId, userId, mediaGroupId, mias as FilaPieza[]);
+}
+
+async function armarAlbum(
+  admin: Admin,
+  chatId: number,
+  userId: string,
+  mediaGroupId: string,
+  mias: FilaPieza[],
+) {
+  // El orden del álbum es el de los update_id: es el orden en que la
+  // persona mandó las fotos, y es con el que se las nombra en el chat.
+  const ordenadas = [...mias].sort((a, b) => a.update_id - b.update_id);
+
+  // ¿Este grupo ya se había armado antes? Son las piezas del grupo que
+  // están tomadas y que NO tomé yo.
+  const { data: todas } = await admin
+    .from("telegram_piezas")
+    .select("update_id, item_numero")
+    .eq("media_group_id", mediaGroupId)
+    .not("armado_at", "is", null);
+
+  const mios = new Set(ordenadas.map((p) => p.update_id));
+  const previas = ((todas ?? []) as { update_id: number; item_numero: number | null }[]).filter(
+    (p) => !mios.has(p.update_id),
+  );
+  const numerosPrevios = [
+    ...new Set(previas.map((p) => p.item_numero).filter((n): n is number => typeof n === "number")),
+  ];
+
+  // Telegram le pone el caption a UNA sola foto del álbum, no a todas. Si
+  // la persona escribió "COP" al mandar el bloque, eso vale para las N.
+  const captionGrupo = ordenadas.map((p) => p.caption ?? "").find((c) => c.trim() !== "") ?? "";
+  const monedaDelCaption = monedaDeTexto(captionGrupo);
+
+  const listas: PiezaLista[] = [];
+  const afuera: PiezaAfuera[] = [];
+
+  ordenadas.forEach((p, i) => {
+    const orden = i + 1;
+    const guardado = Boolean(p.comprobante_path);
+
+    if (p.estado !== "lista" || p.monto === null || !(p.monto > 0)) {
+      afuera.push({ orden, motivo: p.motivo ?? "no la pude leer", guardado });
+      return;
+    }
+
+    // La moneda de la foto, y si no la tiene, la que declaró el caption del
+    // álbum. Lo que NO se hace es copiarle la moneda a las hermanas: que
+    // dos comprobantes vengan en el mismo álbum no prueba que sean de la
+    // misma moneda, y ahí adivinar mal carga la plata en el flujo
+    // equivocado sin que nadie lo vea.
+    const moneda = p.moneda ?? monedaDelCaption;
+    if (!moneda) {
+      afuera.push({
+        orden,
+        motivo:
+          'no pude distinguir si estaba en bolívares o en pesos (reenviala escribiendo "Bs" o "COP")',
+        guardado,
+      });
+      return;
+    }
+
+    listas.push({
+      orden,
+      monto: p.monto,
+      moneda,
+      fecha: p.fecha ?? hoyISO(),
+      fechaLeida: p.fecha !== null,
+      referencia: p.referencia,
+      banco: p.banco,
+      comprobante_path: p.comprobante_path,
+      comprobante_texto: null,
+      // Viene de una columna jsonb: se comprueba que sea un array antes de
+      // tratarlo como tal, porque acá ya no hay tipos que lo garanticen.
+      avisos: Array.isArray(p.avisos) ? p.avisos : [],
+      updateId: p.update_id,
+    });
+  });
+
+  // PIEZA TARDÍA: llegó después de que el grupo ya se armó.
+  //
+  // Se carga APARTE y no se suma al movimiento que ya existe. Sumarla
+  // querría decir editarle el total a un movimiento que la contraparte
+  // puede estar revisando (o haber aprobado) en ese mismo momento: cambiar
+  // por atrás un número que alguien ya miró es peor que tener dos
+  // movimientos. Aparte no se pierde nada y unir dos movimientos desde el
+  // panel es trabajo de la persona, no una sorpresa.
+  const encabezado: string[] = [];
+  if (previas.length > 0) {
+    encabezado.push(
+      ordenadas.length === 1
+        ? "Esta foto llegó tarde: el resto del bloque ya se había cargado."
+        : "Estas fotos llegaron tarde: el resto del bloque ya se había cargado.",
+      numerosPrevios.length > 0
+        ? `Lo que ya estaba quedó en ${numerosPrevios.map((n) => `#${n}`).join(", ")} y no lo toco: puede estar en revisión, y cambiarle el total por atrás sería reescribir algo que la contraparte ya miró.`
+        : "Lo que ya estaba no lo toco: puede estar en revisión.",
+      "Así que esto va aparte. Si tenían que ir juntas, unificalas desde el panel.",
+      "",
+    );
+  }
+
+  const armados = await armarYContar(admin, chatId, userId, listas, afuera, encabezado, captionGrupo);
+
+  // Queda anotado en qué movimiento terminó cada pieza. Es bitácora: sirve
+  // para que una pieza tardía pueda decir en el chat con qué número quedó
+  // el resto del bloque.
+  for (const m of armados) {
+    const ids = m.piezas
+      .map((p) => p.updateId)
+      .filter((id): id is number => typeof id === "number");
+    if (ids.length === 0) continue;
+
+    const { error } = await admin
+      .from("telegram_piezas")
+      .update({ item_id: m.itemId, item_numero: m.numero })
+      .eq("media_group_id", mediaGroupId)
+      .in("update_id", ids);
+
+    if (error) {
+      // No se le cuenta a nadie: el movimiento YA está cargado y avisado.
+      // Esto es solo la bitácora del bot.
+      console.error(`[telegram] no se pudo anotar el movimiento en las piezas: ${error.message}`);
+    }
+  }
+}
+
+// ------------------------------------------------------------
+// El camino del texto
+// ------------------------------------------------------------
+
+const NO_ES_COMPROBANTE = `No le encontré ningún monto a ese texto, así que no cargué nada.
+
+Si era un comprobante, pegámelo completo, tal como lo copia la app del banco (con el "Monto:", la "Referencia:" y la fecha). También podés mandarme la foto.
+
+/ayuda para ver todo lo que hago.`;
+
+/**
+ * Un comprobante (o varios) pegados como TEXTO.
+ *
+ * Las apps de los bancos comparten el comprobante como texto plano, y ese
+ * texto ya viene etiquetado ("Monto:", "Referencia:", "Fecha de
+ * operación:"). No hay nada que interpretar: es reconocer patrones, sale
+ * gratis y contesta al instante. Mandárselo al modelo sería pagar — y
+ * esperar hasta 20 segundos — por leer algo que ya viene escrito.
+ *
+ * El parseo es el MISMO que usa la web (parseComprobantesTexto): un solo
+ * lugar donde se decide qué dice un comprobante, para que el mismo texto no
+ * valga distinto según por dónde entró.
+ */
+async function procesarTexto(admin: Admin, chatId: number, userId: string, texto: string) {
+  // Plural a propósito: un mensaje puede traer varios comprobantes pegados
+  // de corrido, y en ese caso son varios depósitos de UN movimiento, igual
+  // que un álbum de fotos.
+  const comprobantes = parseComprobantesTexto(texto);
+
+  const { data: perfil } = await admin
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .maybeSingle();
+
+  const esColaborador = perfil?.role === "colaborador";
+  // Lo que la persona haya escrito alrededor de los comprobantes vale para
+  // todo el mensaje, igual que el caption de un álbum.
+  const monedaDelMensaje = monedaDeTexto(texto);
+
+  const listas: PiezaLista[] = [];
+  const afuera: PiezaAfuera[] = [];
+
+  comprobantes.forEach((c, i) => {
+    const orden = i + 1;
+    const datos = c.datos;
+
+    if (datos.monto === null || !(datos.monto > 0)) {
+      afuera.push({ orden, motivo: "no le encontré el monto", guardado: false });
+      return;
+    }
+
+    // La MISMA cascada que las fotos, con el texto del propio comprobante
+    // en lugar del caption. Si ni así hay certeza, no se adivina.
+    const moneda = determinarMoneda(datos, c.texto, esColaborador) ?? monedaDelMensaje;
+    if (!moneda) {
+      afuera.push({
+        orden,
+        motivo:
+          'no pude distinguir si estaba en bolívares o en pesos (reenvialo escribiendo "Bs" o "COP")',
+        guardado: false,
+      });
+      return;
+    }
+
+    listas.push({
+      orden,
+      monto: datos.monto,
+      moneda,
+      fecha: datos.fecha ?? hoyISO(),
+      fechaLeida: datos.fecha !== null,
+      referencia: datos.referencia,
+      banco: datos.banco,
+      // El comprobante ES el texto: no hay archivo que subir al bucket. La
+      // columna comprobante_texto ya existe y el visor de la web la sabe
+      // mostrar, igual que cuando se pega desde el formulario.
+      comprobante_path: null,
+      comprobante_texto: c.texto,
+      avisos: datos.avisos,
+    });
+  });
+
+  // Ningún monto en ningún bloque: esto no era un comprobante, era un
+  // mensaje cualquiera. Se contesta como tal y no con un error.
+  if (listas.length === 0) {
+    await enviarMensaje(chatId, NO_ES_COMPROBANTE);
+    return;
+  }
+
+  // El detalle del movimiento va SIN el texto: acá el mensaje entero ES el
+  // comprobante, y cada depósito ya se lo lleva en comprobante_texto.
+  // Repetirlo en el detalle del item sería la misma parrafada dos veces.
+  await armarYContar(admin, chatId, userId, listas, afuera, [], "");
 }

@@ -16,6 +16,7 @@ import {
   flujoDeMoneda,
   formatMonto,
   monedaDeFlujo,
+  usdtDesdeOrigen,
   type Deposito,
   type Moneda,
   type TipoFlujo,
@@ -71,11 +72,15 @@ function sumarDepositos(filas: FilaDeposito[]) {
 
 // El total en USDT es un valor DERIVADO de la conversion: lo que se recibio
 // en Bs/COP dividido entre la tasa. No es un dato que haya que tipear.
+//
+// La division en si vive en lib/items (usdtDesdeOrigen) porque el bot de
+// Telegram hace la misma cuenta; aca queda solo la validacion del campo de
+// texto, que es lo unico propio del formulario.
 function calcularUsdt(totalOrigen: number, tasaRaw: string) {
   const tasa = Number(tasaRaw);
   if (tasaRaw.trim() === "" || !Number.isFinite(tasa) || tasa <= 0) return null;
   if (totalOrigen <= 0) return null;
-  return Math.round((totalOrigen / tasa) * 100) / 100;
+  return usdtDesdeOrigen(totalOrigen, tasa);
 }
 
 function claveDe(par: ParReferencia, fecha: string) {
