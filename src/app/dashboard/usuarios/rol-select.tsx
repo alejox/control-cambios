@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useActionState } from "react";
 import { cambiarRol, type RolState } from "./actions";
 
@@ -18,8 +19,19 @@ export default function RolSelect({
   rol: string;
   esYo: boolean;
 }) {
+  const router = useRouter();
+
+  // El revalidatePath del action marca la ruta como vencida en el servidor,
+  // pero el arbol que ya esta pintado en este navegador no se vuelve a pedir
+  // por su cuenta: el rol quedaba guardado en la base y la lista seguia
+  // mostrando el anterior. El refresh lo pide de nuevo, y como la pantalla es
+  // un Server Component vuelve con el rol nuevo ya renderizado.
   const [state, formAction, pending] = useActionState<RolState, FormData>(
-    cambiarRol,
+    async (previo, formData) => {
+      const resultado = await cambiarRol(previo, formData);
+      if (resultado.ok) router.refresh();
+      return resultado;
+    },
     { error: null, ok: false },
   );
 
