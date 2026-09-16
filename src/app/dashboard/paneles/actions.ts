@@ -70,10 +70,20 @@ export async function guardarPanel(
   if (!supabase) return { error, ok: false };
 
   const id = texto(formData, "id");
+
+  // getAll porque el formulario manda un campo "url" por cada link. Los
+  // vacíos se descartan acá y no en la pantalla: el usuario puede dejar
+  // una fila abierta sin escribir nada y eso no es un link, es una fila
+  // abierta.
+  const urls = formData
+    .getAll("url")
+    .map((u) => String(u).trim())
+    .filter(Boolean);
+
   const fila = {
     user_id: user.id,
     nombre,
-    url: texto(formData, "url"),
+    urls,
     usuario: texto(formData, "usuario"),
     clave: (formData.get("clave") as string) ?? "",
     notas: texto(formData, "notas"),

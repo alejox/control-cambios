@@ -12,7 +12,8 @@ export const ESTADO_INICIAL: PanelState = { error: null, ok: false };
 export type Panel = {
   id: string;
   nombre: string;
-  url: string;
+  /** En el orden en que los puso el usuario. El primero es el de entrar. */
+  urls: string[];
   usuario: string;
   clave: string;
   notas: string;

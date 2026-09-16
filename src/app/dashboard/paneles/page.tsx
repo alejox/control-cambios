@@ -34,7 +34,7 @@ export default async function PanelesPage() {
   // impresión de que la protección vive en la consulta.
   const { data, error } = await supabase
     .from("paneles")
-    .select("id, nombre, url, usuario, clave, notas")
+    .select("id, nombre, urls, usuario, clave, notas")
     .order("orden", { ascending: true })
     .order("created_at", { ascending: true });
 

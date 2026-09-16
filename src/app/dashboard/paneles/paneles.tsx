@@ -69,17 +69,22 @@ function Tarjeta({ panel }: { panel: Panel }) {
         </button>
       </div>
 
-      {panel.url && (
-        <a
-          href={panel.url}
-          target="_blank"
-          // noreferrer además de noopener: el panel de un proveedor no
-          // tiene por qué enterarse de desde dónde llegaste.
-          rel="noopener noreferrer"
-          className="break-all text-[13.5px] text-accent transition hover:underline"
-        >
-          {panel.url}
-        </a>
+      {(panel.urls ?? []).length > 0 && (
+        <div className="flex flex-col gap-1">
+          {panel.urls.map((url) => (
+            <a
+              key={url}
+              href={url}
+              target="_blank"
+              // noreferrer además de noopener: el panel de un proveedor no
+              // tiene por qué enterarse de desde dónde llegaste.
+              rel="noopener noreferrer"
+              className="break-all text-[13.5px] text-accent transition hover:underline"
+            >
+              {url}
+            </a>
+          ))}
+        </div>
       )}
 
       {panel.usuario && <Campo etiqueta="Usuario" valor={panel.usuario} />}
@@ -189,8 +194,7 @@ function Formulario({
 
       <Entrada nombre="nombre" etiqueta="Nombre" valor={panel?.nombre} requerido
         ayuda="Cómo lo reconocés vos: “Oleada admin”, “Stella reventa”." />
-      <Entrada nombre="url" etiqueta="Link del panel" valor={panel?.url} tipo="url"
-        marcador="https://…" />
+      <Links valores={panel?.urls} />
       <Entrada nombre="usuario" etiqueta="Usuario" valor={panel?.usuario} />
       <Entrada nombre="clave" etiqueta="Clave" valor={panel?.clave} tipo="password" />
 
@@ -221,6 +225,75 @@ function Formulario({
         )}
       </div>
     </form>
+  );
+}
+
+/**
+ * Los links del panel: uno o varios, con un + para sumar y una × para sacar.
+ *
+ * Varios porque un mismo proveedor suele tener más de una puerta —- la de
+ * administración, la de reventa, a veces un espejo -— y guardar una sola
+ * obligaba a crear dos paneles con el mismo usuario y la misma clave, que
+ * después se desincronizan en cuanto cambia la contraseña.
+ *
+ * Siempre queda al menos una casilla, aunque esté vacía: un formulario sin
+ * ninguna obliga a adivinar que primero hay que apretar el +. La × aparece
+ * recién con la segunda, que es cuando quitar significa algo.
+ *
+ * Todas se llaman "url": del otro lado se leen con getAll y se descartan
+ * las vacías.
+ */
+function Links({ valores }: { valores?: string[] }) {
+  const [links, setLinks] = useState<string[]>(
+    valores && valores.length > 0 ? valores : [""],
+  );
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor="url-0" className={ETIQUETA}>
+        {links.length === 1 ? "Link del panel" : "Links del panel"}
+      </label>
+
+      {links.map((valor, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <input
+            id={`url-${i}`}
+            name="url"
+            type="url"
+            value={valor}
+            onChange={(e) =>
+              setLinks((previos) =>
+                previos.map((v, j) => (j === i ? e.target.value : v)),
+              )
+            }
+            placeholder="https://…"
+            autoComplete="off"
+            autoCapitalize="none"
+            spellCheck={false}
+            className={INPUT}
+          />
+          {links.length > 1 && (
+            <button
+              type="button"
+              onClick={() => setLinks((p) => p.filter((_, j) => j !== i))}
+              aria-label={`Quitar el link ${i + 1}`}
+              title="Quitar este link"
+              className="h-9 w-9 flex-none rounded-[9px] border border-border bg-surface text-[15px] leading-none text-ink-soft transition hover:border-critical-soft hover:text-critical"
+            >
+              ×
+            </button>
+          )}
+        </div>
+      ))}
+
+      <button
+        type="button"
+        onClick={() => setLinks((p) => [...p, ""])}
+        className="self-start text-[12.5px] text-accent transition hover:underline"
+      >
+        + Agregar otro link
+      </button>
+    </div>
   );
 }
 
