@@ -79,6 +79,10 @@ export default function ItemsTable({
   const [hasta, setHasta] = useState("");
   const [buscaRef, setBuscaRef] = useState("");
   const [buscaNumero, setBuscaNumero] = useState("");
+  // "" = los dos flujos. Un select y no dos casillas: los flujos son
+  // mutuamente excluyentes, asi que marcar los dos es lo mismo que no
+  // filtrar y ofrecerlo seria ofrecer un estado sin sentido.
+  const [buscaFlujo, setBuscaFlujo] = useState("");
 
   const porItem = new Map<string, DepositoFila[]>();
   for (const d of depositos) {
@@ -109,6 +113,10 @@ export default function ItemsTable({
     return numeroBuscado === null || item.numero === numeroBuscado;
   }
 
+  function coincideFlujo(item: Item) {
+    return buscaFlujo === "" || item.tipo_flujo === buscaFlujo;
+  }
+
   function coincideFecha(item: Item, filas: DepositoFila[]) {
     if (!desde && !hasta) return true;
     // Entra si la fecha del movimiento cae en el rango, o la de cualquiera
@@ -135,11 +143,20 @@ export default function ItemsTable({
   // ahi: es del movimiento entero, y pintar TODOS sus depositos por haber
   // buscado el "#7" seria ruido, no una pista.
   const hayFiltroDeDeposito = conFiltros && Boolean(desde || hasta || refBuscada);
-  const hayFiltro = hayFiltroDeDeposito || (conFiltros && numeroBuscado !== null);
+  // El flujo tampoco entra en el resaltado, por lo mismo que el numero: es
+  // una propiedad del movimiento entero, no de un deposito en particular.
+  const hayFiltro =
+    hayFiltroDeDeposito ||
+    (conFiltros && (numeroBuscado !== null || buscaFlujo !== ""));
   const visibles = conFiltros
     ? items.filter((item) => {
         const filas = porItem.get(item.id) ?? [];
-        return coincideNumero(item) && coincideFecha(item, filas) && coincideRef(filas);
+        return (
+          coincideNumero(item) &&
+          coincideFlujo(item) &&
+          coincideFecha(item, filas) &&
+          coincideRef(filas)
+        );
       })
     : items;
 
@@ -163,6 +180,7 @@ export default function ItemsTable({
     setHasta("");
     setBuscaRef("");
     setBuscaNumero("");
+    setBuscaFlujo("");
   }
 
   function abrirComprobante(d: DepositoFila) {
@@ -225,6 +243,27 @@ export default function ItemsTable({
             onChange={(e) => setHasta(e.target.value)}
             className="h-9 rounded-[9px] border border-border bg-surface px-2.5 text-[13px] outline-none focus:border-accent focus:ring-1 focus:ring-accent"
           />
+        </div>
+
+        {/* Va entre las fechas y la referencia porque la barra sigue el
+            orden de las columnas de la tabla: #, fecha, flujo, referencia. */}
+        <div className="flex flex-col gap-1">
+          <label htmlFor="f-flujo" className="font-mono text-[10px] uppercase tracking-widest text-ink-soft">
+            Flujo
+          </label>
+          <select
+            id="f-flujo"
+            value={buscaFlujo}
+            onChange={(e) => setBuscaFlujo(e.target.value)}
+            className="h-9 rounded-[9px] border border-border bg-surface px-2.5 text-[13px] outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+          >
+            <option value="">Todos</option>
+            {Object.entries(ETIQUETA_FLUJO).map(([valor, etiqueta]) => (
+              <option key={valor} value={valor}>
+                {etiqueta}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="flex min-w-[12rem] flex-1 flex-col gap-1">
