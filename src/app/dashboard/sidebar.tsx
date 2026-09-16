@@ -138,24 +138,15 @@ export default function Sidebar({ esAdmin }: { esAdmin: boolean }) {
  * mano: en un teléfono la esquina superior izquierda es el punto más
  * lejano que existe.
  *
- * Panel va al MEDIO y no primero: es la pantalla a la que más se vuelve,
- * y el centro es el único lugar que se alcanza con cualquiera de los dos
- * pulgares. Los extremos quedan para lo que se visita de vez en cuando.
+ * El orden es el MISMO que en la barra lateral, a propósito. Se probó con
+ * Panel al centro —- queda más cómodo para el pulgar -— y se volvió atrás:
+ * que el mismo icono esté en un lugar distinto según el dispositivo se
+ * presta a confusión, y la memoria muscular que se gana en el teléfono se
+ * paga cada vez que se abre en la computadora.
  */
 export function MenuInferior({ esAdmin }: { esAdmin: boolean }) {
   const pathname = usePathname();
   const visibles = ENTRADAS.filter((e) => !e.soloAdmin || esAdmin);
-
-  // Se saca Panel de la lista y se lo vuelve a meter en el medio de las
-  // demás. Con un número par de entradas no existe un centro exacto, así
-  // que queda medio lugar corrido; es lo más cerca que se puede estar sin
-  // inventar una casilla vacía para emparejar.
-  const panel = visibles.find((e) => e.exacta);
-  const resto = visibles.filter((e) => e !== panel);
-  const mitad = Math.floor(resto.length / 2);
-  const ordenadas = panel
-    ? [...resto.slice(0, mitad), panel, ...resto.slice(mitad)]
-    : visibles;
 
   return (
     <nav
@@ -165,7 +156,7 @@ export function MenuInferior({ esAdmin }: { esAdmin: boolean }) {
       // debajo de la barra del sistema.
       className="fixed inset-x-0 bottom-0 z-40 flex border-t border-[#3A4237] bg-ink pb-[env(safe-area-inset-bottom)] md:hidden"
     >
-      {ordenadas.map((e) => {
+      {visibles.map((e) => {
         const esta = activa(e, pathname);
         return (
           <Link
