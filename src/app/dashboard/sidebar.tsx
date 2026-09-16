@@ -41,6 +41,18 @@ const IconoRevision = (
   </svg>
 );
 
+const IconoVenta = (
+  <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden>
+    <path
+      d="M7.6 1.9h5.4a1.1 1.1 0 0 1 1.1 1.1v5.4a1.3 1.3 0 0 1-.38.92l-4.8 4.8a1.1 1.1 0 0 1-1.56 0L2.28 8.64a1.1 1.1 0 0 1 0-1.56l4.8-4.8a1.3 1.3 0 0 1 .52-.38Z"
+      stroke="currentColor"
+      strokeWidth="1.3"
+      strokeLinejoin="round"
+    />
+    <circle cx="11" cy="5" r="1.05" stroke="currentColor" strokeWidth="1.2" />
+  </svg>
+);
+
 const IconoUsuarios = (
   <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden>
     <circle cx="6.2" cy="5.4" r="2.4" stroke="currentColor" strokeWidth="1.3" />
@@ -53,6 +65,9 @@ const ENTRADAS: Entrada[] = [
   { href: "/dashboard", etiqueta: "Panel", icono: IconoPanel, exacta: true },
   { href: "/dashboard/revision", etiqueta: "Por revisar", icono: IconoRevision },
   { href: "/dashboard/liquidaciones", etiqueta: "Liquidaciones", icono: IconoLiquidaciones },
+  // Sin soloAdmin: la lista de precios la ven los dos roles. Editarla es
+  // otra cosa, y eso lo corta RLS en la base.
+  { href: "/dashboard/venta-publico", etiqueta: "Venta público", icono: IconoVenta },
   { href: "/dashboard/usuarios", etiqueta: "Usuarios", icono: IconoUsuarios, soloAdmin: true },
 ];
 
