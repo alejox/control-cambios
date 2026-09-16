@@ -80,12 +80,31 @@ export async function guardarPanel(
     .map((u) => String(u).trim())
     .filter(Boolean);
 
+  // Usuario y clave se leen EN PAREJA, por posición: el formulario manda
+  // los dos campos por cada fila y el navegador los entrega en el orden
+  // del documento.
+  //
+  // Y se descartan de a pares, no cada uno por su lado. Filtrar los
+  // usuarios vacíos antes de emparejar correría las claves un lugar y le
+  // pegaría a cada cuenta la contraseña de la siguiente. Eso no rompe
+  // nada visible: simplemente un día no entrás, y parece que te cambiaron
+  // la contraseña.
+  const usuarios = formData.getAll("usuario").map(String);
+  const claves = formData.getAll("clave").map(String);
+  const cuentas = usuarios
+    .map((usuario, i) => ({
+      usuario: usuario.trim(),
+      // La clave NO se recorta: un espacio al final puede ser parte de
+      // la contraseña.
+      clave: claves[i] ?? "",
+    }))
+    .filter((c) => c.usuario !== "" || c.clave !== "");
+
   const fila = {
     user_id: user.id,
     nombre,
     urls,
-    usuario: texto(formData, "usuario"),
-    clave: (formData.get("clave") as string) ?? "",
+    cuentas,
     notas: texto(formData, "notas"),
     updated_at: new Date().toISOString(),
   };

@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useState } from "react";
 import { eliminarPanel, guardarPanel } from "./actions";
-import { ESTADO_INICIAL, type Panel, type PanelState } from "./estado";
+import { ESTADO_INICIAL, type Cuenta, type Panel, type PanelState } from "./estado";
 
 const INPUT =
   "h-9 w-full rounded-[9px] border border-border bg-surface px-3 text-[13.5px] outline-none focus:border-accent focus:ring-1 focus:ring-accent";
@@ -87,8 +87,22 @@ function Tarjeta({ panel }: { panel: Panel }) {
         </div>
       )}
 
-      {panel.usuario && <Campo etiqueta="Usuario" valor={panel.usuario} />}
-      {panel.clave && <Campo etiqueta="Clave" valor={panel.clave} secreto />}
+      {(panel.cuentas ?? []).map((cuenta, i) => (
+        <div
+          key={i}
+          className={`flex flex-col gap-2 ${
+            i > 0 ? "border-t border-border/70 pt-3" : ""
+          }`}
+        >
+          {/* El número solo cuando hay más de una: con una sola, "Cuenta 1"
+              es ruido que hace pensar que falta la 2. */}
+          {panel.cuentas.length > 1 && (
+            <span className={`${ETIQUETA} text-ink-soft/70`}>Cuenta {i + 1}</span>
+          )}
+          {cuenta.usuario && <Campo etiqueta="Usuario" valor={cuenta.usuario} />}
+          {cuenta.clave && <Campo etiqueta="Clave" valor={cuenta.clave} secreto />}
+        </div>
+      ))}
 
       {panel.notas && (
         <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-ink-soft">
@@ -195,8 +209,7 @@ function Formulario({
       <Entrada nombre="nombre" etiqueta="Nombre" valor={panel?.nombre} requerido
         ayuda="Cómo lo reconocés vos: “Oleada admin”, “Stella reventa”." />
       <Links valores={panel?.urls} />
-      <Entrada nombre="usuario" etiqueta="Usuario" valor={panel?.usuario} />
-      <Entrada nombre="clave" etiqueta="Clave" valor={panel?.clave} tipo="password" />
+      <Cuentas valores={panel?.cuentas} />
 
       <div className="flex flex-col gap-1.5">
         <label htmlFor="notas" className={ETIQUETA}>
@@ -292,6 +305,86 @@ function Links({ valores }: { valores?: string[] }) {
         className="self-start text-[12.5px] text-accent transition hover:underline"
       >
         + Agregar otro link
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Las cuentas del panel: usuario y clave, juntos, una o varias.
+ *
+ * Los dos campos viven en la MISMA fila y no en dos listas separadas
+ * porque se leen emparejados por posición del otro lado. Separarlos en la
+ * pantalla —- una lista de usuarios acá, otra de claves allá -— dejaría
+ * que se borre uno sin el otro, y la clave de la tercera cuenta terminaría
+ * pegada a la segunda.
+ *
+ * Siempre queda al menos una fila, y la × aparece recién con la segunda.
+ */
+function Cuentas({ valores }: { valores?: Cuenta[] }) {
+  const [cuentas, setCuentas] = useState<Cuenta[]>(
+    valores && valores.length > 0 ? valores : [{ usuario: "", clave: "" }],
+  );
+
+  function cambiar(i: number, campo: keyof Cuenta, valor: string) {
+    setCuentas((previas) =>
+      previas.map((c, j) => (j === i ? { ...c, [campo]: valor } : c)),
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <span className={ETIQUETA}>
+        {cuentas.length === 1 ? "Cuenta" : "Cuentas"}
+      </span>
+
+      {cuentas.map((cuenta, i) => (
+        <div key={i} className="flex items-start gap-2">
+          <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row">
+            <input
+              name="usuario"
+              value={cuenta.usuario}
+              onChange={(e) => cambiar(i, "usuario", e.target.value)}
+              placeholder="Usuario"
+              aria-label={`Usuario de la cuenta ${i + 1}`}
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              className={INPUT}
+            />
+            <input
+              name="clave"
+              type="password"
+              value={cuenta.clave}
+              onChange={(e) => cambiar(i, "clave", e.target.value)}
+              placeholder="Clave"
+              aria-label={`Clave de la cuenta ${i + 1}`}
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              className={INPUT}
+            />
+          </div>
+          {cuentas.length > 1 && (
+            <button
+              type="button"
+              onClick={() => setCuentas((p) => p.filter((_, j) => j !== i))}
+              aria-label={`Quitar la cuenta ${i + 1}`}
+              title="Quitar esta cuenta"
+              className="h-9 w-9 flex-none rounded-[9px] border border-border bg-surface text-[15px] leading-none text-ink-soft transition hover:border-critical-soft hover:text-critical"
+            >
+              ×
+            </button>
+          )}
+        </div>
+      ))}
+
+      <button
+        type="button"
+        onClick={() => setCuentas((p) => [...p, { usuario: "", clave: "" }])}
+        className="self-start text-[12.5px] text-accent transition hover:underline"
+      >
+        + Agregar otra cuenta
       </button>
     </div>
   );

@@ -14,7 +14,16 @@ export type Panel = {
   nombre: string;
   /** En el orden en que los puso el usuario. El primero es el de entrar. */
   urls: string[];
+  cuentas: Cuenta[];
+  notas: string;
+};
+
+/**
+ * Un usuario CON su clave. Van juntos y no en dos listas paralelas porque
+ * un usuario sin su clave no sirve para entrar, y dos listas se
+ * desalinean en cuanto se borra una fila de una sola.
+ */
+export type Cuenta = {
   usuario: string;
   clave: string;
-  notas: string;
 };
