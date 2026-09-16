@@ -53,6 +53,18 @@ const IconoVenta = (
   </svg>
 );
 
+const IconoPaneles = (
+  <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden>
+    <circle cx="5.4" cy="8" r="2.7" stroke="currentColor" strokeWidth="1.3" />
+    <path
+      d="M8.1 8h5.4M11.4 8v2M13.1 8v1.6"
+      stroke="currentColor"
+      strokeWidth="1.3"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
 const IconoUsuarios = (
   <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden>
     <circle cx="6.2" cy="5.4" r="2.4" stroke="currentColor" strokeWidth="1.3" />
@@ -68,6 +80,9 @@ const ENTRADAS: Entrada[] = [
   // Sin soloAdmin: la lista de precios la ven los dos roles. Editarla es
   // otra cosa, y eso lo corta RLS en la base.
   { href: "/dashboard/venta-publico", etiqueta: "Venta público", icono: IconoVenta },
+  // Sin soloAdmin: cada uno guarda los suyos y no ve los del otro. Eso no
+  // lo decide el menú, lo corta RLS en la tabla.
+  { href: "/dashboard/paneles", etiqueta: "Mis paneles", icono: IconoPaneles },
   { href: "/dashboard/usuarios", etiqueta: "Usuarios", icono: IconoUsuarios, soloAdmin: true },
 ];
 
