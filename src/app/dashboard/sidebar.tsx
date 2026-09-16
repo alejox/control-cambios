@@ -8,6 +8,8 @@ type Entrada = {
   href: string;
   etiqueta: string;
   icono: ReactNode;
+  /** Para la barra de abajo, donde cada casilla mide unos 65px. */
+  corta: string;
   soloAdmin?: boolean;
   /** Solo se marca activa con coincidencia exacta. */
   exacta?: boolean;
@@ -74,32 +76,37 @@ const IconoUsuarios = (
 );
 
 const ENTRADAS: Entrada[] = [
-  { href: "/dashboard", etiqueta: "Panel", icono: IconoPanel, exacta: true },
-  { href: "/dashboard/revision", etiqueta: "Por revisar", icono: IconoRevision },
-  { href: "/dashboard/liquidaciones", etiqueta: "Liquidaciones", icono: IconoLiquidaciones },
+  { href: "/dashboard", etiqueta: "Panel", corta: "Panel", icono: IconoPanel, exacta: true },
+  { href: "/dashboard/revision", etiqueta: "Por revisar", corta: "Revisar", icono: IconoRevision },
+  { href: "/dashboard/liquidaciones", etiqueta: "Liquidaciones", corta: "Cortes", icono: IconoLiquidaciones },
   // Sin soloAdmin: la lista de precios la ven los dos roles. Editarla es
   // otra cosa, y eso lo corta RLS en la base.
-  { href: "/dashboard/venta-publico", etiqueta: "Venta público", icono: IconoVenta },
+  { href: "/dashboard/venta-publico", etiqueta: "Venta público", corta: "Venta", icono: IconoVenta },
   // Sin soloAdmin: cada uno guarda los suyos y no ve los del otro. Eso no
   // lo decide el menú, lo corta RLS en la tabla.
-  { href: "/dashboard/paneles", etiqueta: "Mis paneles", icono: IconoPaneles },
-  { href: "/dashboard/usuarios", etiqueta: "Usuarios", icono: IconoUsuarios, soloAdmin: true },
+  { href: "/dashboard/paneles", etiqueta: "Mis paneles", corta: "Paneles", icono: IconoPaneles },
+  { href: "/dashboard/usuarios", etiqueta: "Usuarios", corta: "Usuarios", icono: IconoUsuarios, soloAdmin: true },
 ];
+
+/**
+ * "Panel" solo con coincidencia exacta: si no, cualquier ruta que empiece
+ * con /dashboard la dejaria marcada para siempre.
+ *
+ * Vive afuera del componente porque la usan los dos menus, y dos copias de
+ * esta regla se desincronizan el dia que alguien toca una sola.
+ */
+function activa(e: Entrada, pathname: string) {
+  return e.exacta ? pathname === e.href : pathname.startsWith(e.href);
+}
 
 export default function Sidebar({ esAdmin }: { esAdmin: boolean }) {
   const pathname = usePathname();
   const visibles = ENTRADAS.filter((e) => !e.soloAdmin || esAdmin);
 
-  function activa(e: Entrada) {
-    // "Panel" solo con coincidencia exacta: si no, cualquier ruta que
-    // empiece con /dashboard la dejaria marcada para siempre.
-    return e.exacta ? pathname === e.href : pathname.startsWith(e.href);
-  }
-
   return (
     <nav aria-label="Navegación principal" className="flex flex-col gap-1">
       {visibles.map((e) => {
-        const esta = activa(e);
+        const esta = activa(e, pathname);
         return (
           <Link
             key={e.href}
@@ -117,6 +124,71 @@ export default function Sidebar({ esAdmin }: { esAdmin: boolean }) {
                 title y el aria-label siguen nombrando cada opcion. */}
             <span className="hidden md:inline">{e.etiqueta}</span>
             <span className="sr-only md:hidden">{e.etiqueta}</span>
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+/**
+ * El mismo menú, en el borde de abajo, solo en pantallas chicas.
+ *
+ * Abajo y no arriba porque es donde llega el pulgar sin reacomodar la
+ * mano: en un teléfono la esquina superior izquierda es el punto más
+ * lejano que existe.
+ *
+ * Panel va al MEDIO y no primero: es la pantalla a la que más se vuelve,
+ * y el centro es el único lugar que se alcanza con cualquiera de los dos
+ * pulgares. Los extremos quedan para lo que se visita de vez en cuando.
+ */
+export function MenuInferior({ esAdmin }: { esAdmin: boolean }) {
+  const pathname = usePathname();
+  const visibles = ENTRADAS.filter((e) => !e.soloAdmin || esAdmin);
+
+  // Se saca Panel de la lista y se lo vuelve a meter en el medio de las
+  // demás. Con un número par de entradas no existe un centro exacto, así
+  // que queda medio lugar corrido; es lo más cerca que se puede estar sin
+  // inventar una casilla vacía para emparejar.
+  const panel = visibles.find((e) => e.exacta);
+  const resto = visibles.filter((e) => e !== panel);
+  const mitad = Math.floor(resto.length / 2);
+  const ordenadas = panel
+    ? [...resto.slice(0, mitad), panel, ...resto.slice(mitad)]
+    : visibles;
+
+  return (
+    <nav
+      aria-label="Navegación principal"
+      // pb con safe-area: en un iPhone la franja del gesto de inicio se
+      // come el borde de abajo, y sin esto la fila de iconos queda
+      // debajo de la barra del sistema.
+      className="fixed inset-x-0 bottom-0 z-40 flex border-t border-[#3A4237] bg-ink pb-[env(safe-area-inset-bottom)] md:hidden"
+    >
+      {ordenadas.map((e) => {
+        const esta = activa(e, pathname);
+        return (
+          <Link
+            key={e.href}
+            href={e.href}
+            aria-current={esta ? "page" : undefined}
+            className={`flex min-w-0 flex-1 flex-col items-center gap-1 px-1 pb-2 pt-2.5 transition ${
+              esta ? "text-[#D99A46]" : "text-[#7C8375]"
+            }`}
+          >
+            {/* La marca de activo va ARRIBA del icono y no de fondo: con
+                casillas de 65px un fondo redondeado se ve como un botón
+                apretado, y encima tapa el icono. */}
+            <span
+              aria-hidden
+              className={`h-0.5 w-6 rounded-full transition ${
+                esta ? "bg-[#D99A46]" : "bg-transparent"
+              }`}
+            />
+            {e.icono}
+            <span className="w-full truncate text-center text-[9.5px] leading-tight">
+              {e.corta}
+            </span>
           </Link>
         );
       })}

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { leerMonedaPreferida } from "@/lib/preferencias";
-import Sidebar from "./sidebar";
+import Sidebar, { MenuInferior } from "./sidebar";
 import SelectorMoneda from "./selector-moneda";
 import SignOutButton from "./sign-out-button";
 import Campana from "./campana";
@@ -61,7 +61,7 @@ export default async function DashboardLayout({
           PANTALLA y no al final de un documento que puede medir tres
           pantallas. overflow-y-auto por si algun dia hay mas entradas
           que alto. */}
-      <aside className="sticky top-0 flex h-screen w-16 flex-none flex-col gap-6 overflow-y-auto bg-ink px-2.5 py-5 md:w-60 md:px-4">
+      <aside className="sticky top-0 hidden h-screen w-16 md:flex flex-none flex-col gap-6 overflow-y-auto bg-ink px-2.5 py-5 md:w-60 md:px-4">
         <Link href="/dashboard" className="flex items-center justify-center gap-2.5 md:justify-start">
           <span className="h-2.5 w-2.5 flex-none rounded-full bg-[#D99A46]" />
           <span className="hidden font-mono text-[12px] uppercase tracking-widest text-[#D99A46] md:inline">
@@ -86,15 +86,19 @@ export default async function DashboardLayout({
       {puedeVer && <EscuchaMovimientos />}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-end gap-4 border-b border-border bg-surface px-6 py-3.5">
+        {/* z-30 y no 40: por debajo del menu de abajo, que en un telefono es
+            lo unico que no puede quedar tapado. */}
+        <header className="sticky top-0 z-30 flex items-center justify-end gap-4 border-b border-border bg-surface px-6 py-3.5">
           {esAdmin && <SelectorMoneda valor={monedaPreferida} />}
           {puedeVer && <ConectarTelegram vinculado={Boolean(vinculoTelegram)} />}
           {puedeVer && <Campana />}
           <SignOutButton />
         </header>
 
-        <main className="min-w-0 flex-1">{children}</main>
+        <main className="min-w-0 flex-1 pb-24 md:pb-0">{children}</main>
       </div>
+
+      {puedeVer && <MenuInferior esAdmin={esAdmin} />}
     </div>
   );
 }
