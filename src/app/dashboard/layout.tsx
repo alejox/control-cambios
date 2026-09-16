@@ -50,7 +50,18 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex min-h-screen bg-background">
-      <aside className="flex w-16 flex-none flex-col gap-6 bg-ink px-2.5 py-5 md:w-60 md:px-4">
+      {/* sticky y no fixed: sticky sigue ocupando su lugar en el flex, asi
+          que el contenido se acomoda solo. Con fixed habria que compensar
+          con un margen izquierdo que hay que mantener igual al ancho en
+          cada breakpoint (w-16 y md:w-60), y el dia que uno cambia y el
+          otro no, el contenido se monta encima o deja una franja.
+
+          h-screen en vez de estirarse con la pagina: asi el bloque del
+          usuario, que va con mt-auto, queda pegado al borde de LA
+          PANTALLA y no al final de un documento que puede medir tres
+          pantallas. overflow-y-auto por si algun dia hay mas entradas
+          que alto. */}
+      <aside className="sticky top-0 flex h-screen w-16 flex-none flex-col gap-6 overflow-y-auto bg-ink px-2.5 py-5 md:w-60 md:px-4">
         <Link href="/dashboard" className="flex items-center justify-center gap-2.5 md:justify-start">
           <span className="h-2.5 w-2.5 flex-none rounded-full bg-[#D99A46]" />
           <span className="hidden font-mono text-[12px] uppercase tracking-widest text-[#D99A46] md:inline">
