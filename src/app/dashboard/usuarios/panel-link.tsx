@@ -15,11 +15,14 @@ export default function PanelLink({
   instruccion,
   aviso,
   onCerrar,
+  etiquetaCopiar = "Copiar link",
 }: {
   link: string;
   instruccion: ReactNode;
   aviso: ReactNode;
   onCerrar: () => void;
+  /** No todo lo que se copia acá es un link: Telegram copia un comando. */
+  etiquetaCopiar?: string;
 }) {
   const [copiado, setCopiado] = useState(false);
 
@@ -66,7 +69,7 @@ export default function PanelLink({
           onClick={() => copiar(link)}
           className="h-10 rounded-[10px] bg-ink px-4 text-sm font-medium text-[#F3F1EA] transition hover:bg-[#2a3127]"
         >
-          {copiado ? "Copiado" : "Copiar link"}
+          {copiado ? "Copiado" : etiquetaCopiar}
         </button>
       </div>
     </>

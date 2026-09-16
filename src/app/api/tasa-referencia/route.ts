@@ -1,65 +1,18 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { obtenerTasaP2P, type ParReferencia } from "@/lib/binance";
-import { obtenerTrm } from "@/lib/trm";
-import { formatMonto, type Moneda } from "@/lib/items";
+import type { ParReferencia } from "@/lib/binance";
+import {
+  obtenerFuenteTasa,
+  PARES,
+  type FuenteTasa,
+  type RespuestaReferencia,
+} from "@/lib/tasa-referencia";
 
-const PARES: ParReferencia[] = ["VES_USDT", "USD_COP"];
-const MONEDA_POR_PAR: Record<ParReferencia, Moneda> = { VES_USDT: "VES", USD_COP: "COP" };
-
-export type FuenteTasa = {
-  id: "p2p" | "trm";
-  etiqueta: string;
-  descripcion: string;
-  valor: number;
-  detalle: string;
-};
-
-export type RespuestaReferencia = { fuente: FuenteTasa };
-
-// Una fuente por moneda, y no es una preferencia estetica:
-//
-//   COP -> TRM oficial (Superintendencia Financiera). Es auditable, se puede
-//          consultar por fecha para siempre, y en COP queda a menos de 1% del
-//          P2P, asi que no se pierde realidad usandola.
-//
-//   VES -> Binance P2P. La tasa oficial del BCV esta ~19% por debajo del
-//          mercado donde realmente se convierte. Usarla descuadraria casi la
-//          quinta parte de la plata de cada cierre.
-//
-// Google no es una opcion: no tiene API publica, solo HTML para raspar, y el
-// numero que muestra es el spot interbancario, no la tasa oficial.
-const TTL_MS = 5 * 60 * 1000;
-const cache = new Map<string, { cuerpo: RespuestaReferencia; guardado: number }>();
-
-function fechaCorta(iso: string) {
-  const [y, m, d] = iso.split("-");
-  return `${d}/${m}/${y.slice(2)}`;
-}
-
-async function obtenerFuente(par: ParReferencia, fecha: string | null): Promise<FuenteTasa> {
-  if (par === "USD_COP") {
-    const trm = await obtenerTrm(fecha ?? undefined);
-    return {
-      id: "trm",
-      etiqueta: "TRM oficial",
-      descripcion: "Superintendencia Financiera",
-      valor: trm.valor,
-      detalle: trm.es_ultima_disponible
-        ? `última publicada (${fechaCorta(trm.vigencia_desde)})`
-        : `vigente ${fechaCorta(trm.vigencia_desde)} → ${fechaCorta(trm.vigencia_hasta)}`,
-    };
-  }
-
-  const p2p = await obtenerTasaP2P(par);
-  return {
-    id: "p2p",
-    etiqueta: "Binance P2P",
-    descripcion: "Promedio para comprar USDT",
-    valor: p2p.promedio,
-    detalle: `mediana ${formatMonto(p2p.mediana, MONEDA_POR_PAR[par])} · ${p2p.muestras} anuncios`,
-  };
-}
+// La eleccion de fuente por moneda y el cache viven en
+// @/lib/tasa-referencia: el bot de Telegram pide la misma tasa para el
+// mismo comprobante y tiene que salirle igual. Este handler solo agrega lo
+// propio de la web: la sesion, el permiso y guardar la muestra del P2P.
+export type { FuenteTasa, RespuestaReferencia };
 
 export async function GET(request: Request) {
   const parametros = new URL(request.url).searchParams;
@@ -93,15 +46,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Sin acceso." }, { status: 403 });
   }
 
-  const clave = `${par}|${fecha ?? ""}`;
-  const enCache = cache.get(clave);
-  if (enCache && Date.now() - enCache.guardado < TTL_MS) {
-    return NextResponse.json(enCache.cuerpo);
-  }
-
   let fuente: FuenteTasa;
+  let fresca: boolean;
   try {
-    fuente = await obtenerFuente(par, fecha);
+    ({ fuente, fresca } = await obtenerFuenteTasa(par, fecha));
   } catch (e) {
     return NextResponse.json(
       { error: `No pudimos leer la tasa de referencia: ${(e as Error).message}` },
@@ -110,11 +58,12 @@ export async function GET(request: Request) {
   }
 
   const cuerpo: RespuestaReferencia = { fuente };
-  cache.set(clave, { cuerpo, guardado: Date.now() });
 
-  // Solo se guarda el P2P: la TRM ya es una serie oficial consultable por
-  // fecha para siempre, mientras que el precio del P2P es efimero.
-  if (fuente.id === "p2p") {
+  // Solo se guarda el P2P, y solo cuando se acaba de consultar: la TRM ya
+  // es una serie oficial consultable por fecha para siempre, mientras que
+  // el precio del P2P es efimero. Los aciertos de cache no se guardan
+  // porque serian la misma lectura repetida.
+  if (fresca && fuente.id === "p2p") {
     await supabase.from("tasas_referencia").insert({
       par,
       valor: fuente.valor,

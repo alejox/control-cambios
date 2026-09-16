@@ -4,7 +4,12 @@
  * Todo lo de este archivo es puro: no toca red, ni base, ni React. Vive
  * aparte justamente porque es la parte del sistema donde un error no se
  * ve — un monto mal parseado no rompe nada, solo descuadra la plata.
+ *
+ * El único import es de tipos, que TypeScript borra al compilar: este
+ * archivo sigue sin arrastrar nada en tiempo de ejecución.
  */
+
+import type { Moneda } from "@/lib/items";
 
 export type DatosComprobante = {
   referencia: string | null;
@@ -14,6 +19,14 @@ export type DatosComprobante = {
   monto: number | null;
   /** Lo que decía el comprobante, tal cual. Sirve para auditar el parseo. */
   monto_texto: string | null;
+  /**
+   * Moneda del comprobante, cuando se pudo determinar.
+   *
+   * Opcional porque en la web no hace falta: el formulario ya sabe en qué
+   * flujo está parado. La necesita el bot de Telegram, donde un mensaje
+   * llega sin contexto y la moneda decide el tipo de flujo y la tasa.
+   */
+  moneda?: Moneda | null;
   beneficiario: string | null;
   banco: string | null;
   /** Avisos para mostrarle al usuario; nunca frenan la carga. */

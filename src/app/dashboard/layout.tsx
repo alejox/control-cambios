@@ -6,6 +6,7 @@ import Sidebar from "./sidebar";
 import SelectorMoneda from "./selector-moneda";
 import SignOutButton from "./sign-out-button";
 import Campana from "./campana";
+import ConectarTelegram from "./conectar-telegram";
 
 /**
  * Shell de todo /dashboard: barra lateral de navegacion y topbar.
@@ -37,6 +38,15 @@ export default async function DashboardLayout({
   const puedeVer = esAdmin || role === "colaborador";
   const monedaPreferida = await leerMonedaPreferida();
 
+  // Cada uno solo ve su propio vínculo (política "cada uno ve su vinculo de
+  // telegram"). maybeSingle y no single: no tener chat conectado es el
+  // estado normal, no un error.
+  const { data: vinculoTelegram } = await supabase
+    .from("telegram_vinculos")
+    .select("user_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
   return (
     <div className="flex min-h-screen bg-background">
       <aside className="flex w-16 flex-none flex-col gap-6 bg-ink px-2.5 py-5 md:w-60 md:px-4">
@@ -62,6 +72,7 @@ export default async function DashboardLayout({
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-end gap-4 border-b border-border bg-surface px-6 py-3.5">
           {esAdmin && <SelectorMoneda valor={monedaPreferida} />}
+          {puedeVer && <ConectarTelegram vinculado={Boolean(vinculoTelegram)} />}
           {puedeVer && <Campana />}
           <SignOutButton />
         </header>
