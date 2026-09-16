@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { leerComisionGlobal } from "@/lib/configuracion";
-import { formatMonto, type Item } from "@/lib/items";
+import { leerComisiones } from "@/lib/configuracion";
+import { comisionDeFlujo, formatMonto, type Item } from "@/lib/items";
 import RevisionItem, { type DepositoRevision } from "./revision-item";
 
 export default async function RevisionPage() {
@@ -35,7 +35,25 @@ export default async function RevisionPage() {
     .order("numero", { ascending: true });
 
   const items = (data ?? []) as Item[];
-  const comisionPct = await leerComisionGlobal();
+  const comisiones = await leerComisiones();
+
+  // Quien devolvio cada movimiento que volvio atras. Es una consulta chica
+  // y solo se hace si hay alguno devuelto: "volvio a tu lista" sin decir
+  // quien lo mando de vuelta es justo la mitad de la informacion que hace
+  // falta para no ir a preguntarlo por chat.
+  const quienesDevolvieron = [
+    ...new Set(items.map((i) => i.desaprobado_por).filter(Boolean)),
+  ] as string[];
+  const emailPorId = new Map<string, string>();
+  if (quienesDevolvieron.length > 0) {
+    const { data: perfiles } = await supabase
+      .from("profiles")
+      .select("id, email")
+      .in("id", quienesDevolvieron);
+    for (const p of perfiles ?? []) {
+      if (p.email) emailPorId.set(p.id, p.email);
+    }
+  }
 
   const porItem = new Map<string, DepositoRevision[]>();
   let errorDepositos: string | null = null;
@@ -115,7 +133,16 @@ export default async function RevisionPage() {
               key={item.id}
               item={item}
               depositos={porItem.get(item.id) ?? []}
-              comisionPct={comisionPct}
+              // Cada tarjeta muestra el porcentaje de SU moneda: en esta
+              // lista conviven movimientos en Bs y en COP, y desde que las
+              // comisiones son distintas un solo numero para todos seria
+              // falso en la mitad de las tarjetas.
+              comisionPct={comisionDeFlujo(comisiones, item.tipo_flujo)}
+              devueltoPor={
+                item.desaprobado_por === null
+                  ? null
+                  : (emailPorId.get(item.desaprobado_por) ?? null)
+              }
             />
           ))}
         </div>

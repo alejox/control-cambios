@@ -6,7 +6,38 @@ import { createClient } from "@/lib/supabase/server";
 export type ComisionState = { error: string | null; ok: boolean };
 
 /**
- * Cambia el porcentaje de comisión global.
+ * Lee un porcentaje del formulario y lo valida.
+ *
+ * Number("") es 0: sin el chequeo de vacío, mandar el campo en blanco
+ * dejaba la comisión en cero sin que nadie lo pidiera.
+ */
+function leerPorcentaje(formData: FormData, campo: string, moneda: string) {
+  const raw = ((formData.get(campo) as string) ?? "").trim();
+
+  if (raw === "") {
+    return { valor: null, error: `Escribí el porcentaje de ${moneda}.` };
+  }
+
+  const valor = Number(raw);
+  if (!Number.isFinite(valor) || valor < 0 || valor > 100) {
+    return { valor: null, error: `El porcentaje de ${moneda} debe estar entre 0 y 100.` };
+  }
+
+  return { valor, error: null };
+}
+
+/**
+ * Cambia las dos comisiones: la de Bs y la de COP.
+ *
+ * Van juntas en un solo update, no en dos acciones separadas: es un
+ * formulario con dos campos y guardar uno sí y el otro no dejaría la
+ * configuración a medio camino.
+ *
+ * NO se toca comision_pct, la columna vieja. Sigue viva solo para el front
+ * anterior y hay un trigger en la base que la replica hacia estas dos
+ * cuando la escribe ese front; si escribiéramos las tres juntas, ese
+ * trigger podría pisar lo que acaba de elegir el admin. Se dropea la
+ * columna —y el trigger— cuando el front nuevo lleve un rato arriba.
  *
  * La autorización real no está acá: la política de RLS "solo admin cambia
  * configuracion" es la que decide. Este chequeo previo existe solo para
@@ -15,22 +46,15 @@ export type ComisionState = { error: string | null; ok: boolean };
  * Los items ya registrados no se tocan: cada uno guarda el sello del
  * porcentaje con el que se creó.
  */
-export async function actualizarComisionGlobal(
+export async function actualizarComisiones(
   _prevState: ComisionState,
   formData: FormData,
 ): Promise<ComisionState> {
-  const raw = ((formData.get("comision_pct") as string) ?? "").trim();
+  const bs = leerPorcentaje(formData, "comision_bs_pct", "Bs");
+  if (bs.error !== null) return { error: bs.error, ok: false };
 
-  // Number("") es 0: sin este chequeo, mandar el campo vacío dejaba la
-  // comisión en cero sin que nadie lo pidiera.
-  if (raw === "") {
-    return { error: "Escribe un porcentaje.", ok: false };
-  }
-
-  const comision_pct = Number(raw);
-  if (!Number.isFinite(comision_pct) || comision_pct < 0 || comision_pct > 100) {
-    return { error: "El porcentaje debe estar entre 0 y 100.", ok: false };
-  }
+  const cop = leerPorcentaje(formData, "comision_cop_pct", "COP");
+  if (cop.error !== null) return { error: cop.error, ok: false };
 
   const supabase = await createClient();
 
@@ -54,12 +78,13 @@ export async function actualizarComisionGlobal(
   const { data, error } = await supabase
     .from("configuracion")
     .update({
-      comision_pct,
+      comision_bs_pct: bs.valor,
+      comision_cop_pct: cop.valor,
       updated_at: new Date().toISOString(),
       updated_by: user.id,
     })
     .eq("id", true)
-    .select("comision_pct");
+    .select("comision_bs_pct");
 
   if (error) {
     return { error: error.message, ok: false };
@@ -73,7 +98,97 @@ export async function actualizarComisionGlobal(
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/items/new");
+  // La pantalla de revisión también muestra el porcentaje de cada flujo.
+  revalidatePath("/dashboard/revision");
   return { error: null, ok: true };
+}
+
+export type RecalculoState = { error: string | null; mensaje: string | null };
+
+/**
+ * Aplica las comisiones vigentes a todo lo que todavía no se liquidó. Es la
+ * salida para el que configuró mal el porcentaje y ya cargó movimientos
+ * con él.
+ *
+ * Alcanza también a los ya aprobados, pero no les cambia el número por
+ * atrás: a esos la base los DEVUELVE A REVISIÓN, para que la contraparte
+ * vea el número nuevo y lo apruebe otra vez (ver
+ * supabase/phase23_recalculo_amplio.sql).
+ *
+ * El alcance, las reglas y la atomicidad viven en la RPC
+ * recalcular_comisiones_pendientes, no acá: un UPDATE armado desde el
+ * cliente podría pedir cualquier alcance, y el que NUNCA hay que poder
+ * pedir es el de los liquidados. Desde acá no se manda ningún filtro
+ * justamente por eso.
+ *
+ * El chequeo de admin de este archivo es para el mensaje; el que manda es
+ * el de la base (RLS "solo admin escribe items" + el raise de la función).
+ */
+export async function recalcularComisiones(): Promise<RecalculoState> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { error: "Tu sesión venció. Volvé a iniciar sesión.", mensaje: null };
+  }
+
+  const { data: perfil } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  if (perfil?.role !== "admin") {
+    return {
+      error: "Solo un administrador puede recalcular comisiones.",
+      mensaje: null,
+    };
+  }
+
+  const { data, error } = await supabase.rpc("recalcular_comisiones_pendientes");
+
+  if (error) {
+    return { error: error.message, mensaje: null };
+  }
+
+  const resultado = data as {
+    actualizados?: number;
+    devueltos_a_revision?: number;
+  } | null;
+  const actualizados = Number(resultado?.actualizados ?? 0);
+  const devueltos = Number(resultado?.devueltos_a_revision ?? 0);
+
+  // El layout entero y no solo la página: si algún movimiento volvió a
+  // revisión, la campanita —- que vive en el layout —- tiene que subir en el
+  // mismo momento. Esta forma arrastra también a /dashboard/revision.
+  revalidatePath("/dashboard", "layout");
+
+  // Cero no se disfraza de éxito: si no cambió nada hay que decirlo con
+  // esas palabras, porque normalmente significa que ya estaban al día.
+  if (actualizados === 0) {
+    return {
+      error: null,
+      mensaje: "No se actualizó ningún movimiento: ya tenían la comisión vigente.",
+    };
+  }
+
+  const base =
+    actualizados === 1
+      ? "Se actualizó 1 movimiento."
+      : `Se actualizaron ${actualizados} movimientos.`;
+
+  // Lo que volvió a revisión se dice siempre que haya pasado: es trabajo
+  // que se le acaba de generar a la contraparte, no un detalle interno.
+  const cola =
+    devueltos === 0
+      ? ""
+      : devueltos === 1
+        ? " 1 estaba aprobado y volvió a revisión."
+        : ` ${devueltos} estaban aprobados y volvieron a revisión.`;
+
+  return { error: null, mensaje: base + cola };
 }
 
 export type CodigoTelegramState = { error: string | null; codigo: string | null };

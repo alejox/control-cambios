@@ -3,7 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { monedaDeFlujo, type TipoFlujo } from "@/lib/items";
+import {
+  MOTIVO_DESAPROBACION_MAX,
+  monedaDeFlujo,
+  type TipoFlujo,
+} from "@/lib/items";
 
 export type ActionState = { error: string | null };
 
@@ -168,6 +172,73 @@ export async function eliminarItem(itemId: string) {
     throw new Error(traducirErrorDb(error.message));
   }
   revalidatePath("/dashboard");
+}
+
+export type DesaprobarState = { error: string | null; ok: boolean };
+
+/**
+ * Devuelve un movimiento aprobado a revisión.
+ *
+ * Todo lo que importa —- que sea admin, que no esté liquidado, que esté
+ * aprobado, que los depósitos vuelvan junto con el item —- vive en la RPC
+ * desaprobar_item (supabase/phase22_desaprobar_movimiento.sql), no acá. Es
+ * a propósito: esto deshace un acuerdo entre dos personas, y las reglas de
+ * un acuerdo no pueden depender de qué cliente lo llama.
+ *
+ * El chequeo de admin de este archivo es para el mensaje; el que manda es
+ * el de la base (RLS "solo admin escribe items" + el raise de la función).
+ */
+export async function desaprobarItem(
+  _prevState: DesaprobarState,
+  formData: FormData,
+): Promise<DesaprobarState> {
+  const itemId = ((formData.get("item_id") as string) ?? "").trim();
+  const motivo = ((formData.get("motivo") as string) ?? "").trim();
+
+  if (!itemId) return { error: "Falta el movimiento.", ok: false };
+  if (motivo === "") {
+    return { error: "Escribí por qué lo devolvés a revisión.", ok: false };
+  }
+  if (motivo.length > MOTIVO_DESAPROBACION_MAX) {
+    return {
+      error: `El motivo no puede pasar de ${MOTIVO_DESAPROBACION_MAX} caracteres.`,
+      ok: false,
+    };
+  }
+
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Tu sesión venció. Volvé a iniciar sesión.", ok: false };
+
+  const { data: perfil } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  if (perfil?.role !== "admin") {
+    return {
+      error: "Solo un administrador puede devolver un movimiento a revisión.",
+      ok: false,
+    };
+  }
+
+  const { error } = await supabase.rpc("desaprobar_item", {
+    p_item_id: itemId,
+    p_motivo: motivo,
+  });
+
+  if (error) return { error: traducirErrorDb(error.message), ok: false };
+
+  // El layout entero y no solo la página: la campanita vive en el layout y
+  // su número tiene que subir en el mismo momento en que el movimiento
+  // vuelve a la lista de la contraparte. Esta forma arrastra también a
+  // /dashboard/revision, que cuelga del mismo layout.
+  revalidatePath("/dashboard", "layout");
+  return { error: null, ok: true };
 }
 
 function traducirErrorDb(msg: string) {

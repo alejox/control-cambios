@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Fragment, useRef, useState } from "react";
 import DeleteButton from "./items/delete-button";
+import DesaprobarItem from "./items/desaprobar-item";
 import VisorComprobante, { type VisorHandle } from "./visor-comprobante";
 import {
   ETIQUETA_FLUJO,
@@ -77,6 +78,7 @@ export default function ItemsTable({
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
   const [buscaRef, setBuscaRef] = useState("");
+  const [buscaNumero, setBuscaNumero] = useState("");
 
   const porItem = new Map<string, DepositoFila[]>();
   for (const d of depositos) {
@@ -89,6 +91,23 @@ export default function ItemsTable({
   // pendientes son pocos y ya estan todos en memoria. Ir al servidor por
   // cada tecla agregaria latencia sin ganar nada.
   const refBuscada = normalizar(buscaRef);
+
+  // Numero EXACTO, no rango. El "#" se reinicia en cada corte (la
+  // numeracion es por liquidacion), asi que dentro de lo pendiente siempre
+  // es una lista corta y el numero es como la gente nombra UN movimiento:
+  // "fijate el 7". Un rango de numeros ademas seria casi el mismo corte
+  // que el de fechas —- los numeros crecen con el tiempo -— y duplicaria
+  // el ancho de una barra que ya tiene tres campos.
+  //
+  // null = sin filtro. Un campo a medio borrar no puede esconder filas.
+  const numeroBuscado =
+    buscaNumero.trim() === "" || !Number.isFinite(Number(buscaNumero))
+      ? null
+      : Number(buscaNumero);
+
+  function coincideNumero(item: Item) {
+    return numeroBuscado === null || item.numero === numeroBuscado;
+  }
 
   function coincideFecha(item: Item, filas: DepositoFila[]) {
     if (!desde && !hasta) return true;
@@ -108,11 +127,19 @@ export default function ItemsTable({
   // sugiere un trabajo que nadie necesita hacer.
   const MINIMO_PARA_FILTRAR = 6;
   const conFiltros = items.length >= MINIMO_PARA_FILTRAR;
-  const hayFiltro = conFiltros && Boolean(desde || hasta || refBuscada);
+
+  // Dos banderas y no una. "hayFiltro" es cualquier filtro activo y decide
+  // si se muestran el contador y el boton de limpiar. "hayFiltroDeDeposito"
+  // es solo el que apunta a un deposito en particular —- fecha o
+  // referencia -— y decide el resaltado. El numero de movimiento no entra
+  // ahi: es del movimiento entero, y pintar TODOS sus depositos por haber
+  // buscado el "#7" seria ruido, no una pista.
+  const hayFiltroDeDeposito = conFiltros && Boolean(desde || hasta || refBuscada);
+  const hayFiltro = hayFiltroDeDeposito || (conFiltros && numeroBuscado !== null);
   const visibles = conFiltros
     ? items.filter((item) => {
         const filas = porItem.get(item.id) ?? [];
-        return coincideFecha(item, filas) && coincideRef(filas);
+        return coincideNumero(item) && coincideFecha(item, filas) && coincideRef(filas);
       })
     : items;
 
@@ -124,7 +151,7 @@ export default function ItemsTable({
   // alguno: si se busca una referencia dentro de un rango de fechas, el que
   // se marca es el que satisface las dos cosas.
   function depositoCoincide(d: DepositoFila) {
-    if (!conFiltros || !hayFiltro) return false;
+    if (!hayFiltroDeDeposito) return false;
     if (refBuscada !== "" && !normalizar(d.referencia).includes(refBuscada)) return false;
     if (desde && d.fecha < desde) return false;
     if (hasta && d.fecha > hasta) return false;
@@ -135,6 +162,7 @@ export default function ItemsTable({
     setDesde("");
     setHasta("");
     setBuscaRef("");
+    setBuscaNumero("");
   }
 
   function abrirComprobante(d: DepositoFila) {
@@ -154,6 +182,25 @@ export default function ItemsTable({
     <>
       {conFiltros && (
       <div className="flex flex-wrap items-end gap-x-4 gap-y-3 border-b border-border bg-surface-alt/40 px-5 py-3.5">
+        {/* Primero el numero, igual que en la tabla: la barra de filtros
+            sigue el orden de las columnas (#, fecha, referencia) y no hay
+            que buscar cual campo corresponde a cual. */}
+        <div className="flex flex-col gap-1">
+          <label htmlFor="f-numero" className="font-mono text-[10px] uppercase tracking-widest text-ink-soft">
+            Movimiento
+          </label>
+          <input
+            id="f-numero"
+            type="number"
+            min={1}
+            step={1}
+            value={buscaNumero}
+            onChange={(e) => setBuscaNumero(e.target.value)}
+            placeholder="#"
+            className="h-9 w-24 rounded-[9px] border border-border bg-surface px-3 text-[13px] outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+          />
+        </div>
+
         <div className="flex flex-col gap-1">
           <label htmlFor="f-desde" className="font-mono text-[10px] uppercase tracking-widest text-ink-soft">
             Desde
@@ -304,12 +351,28 @@ export default function ItemsTable({
                 </td>
                 <td className="px-5 py-3">
                   {item.revisado_at === null ? (
-                    <span
-                      title="Esperando que la contraparte lo revise"
-                      className="whitespace-nowrap rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-wide text-[#8f5e1f]"
-                    >
-                      En revisión
-                    </span>
+                    // "Devuelto" y no "En revisión" cuando volvió atrás: los
+                    // dos están pendientes, pero uno nunca se aprobó y el
+                    // otro se desaprobó. Sin distinguirlos, el movimiento
+                    // reaparece en la lista como si nada hubiera pasado y el
+                    // motivo queda escrito en una columna que nadie mira.
+                    item.desaprobado_at !== null ? (
+                      <span
+                        title={`Devuelto a revisión el ${formatFecha(
+                          item.desaprobado_at.slice(0, 10),
+                        )}: ${item.desaprobado_motivo ?? "sin motivo"}`}
+                        className="whitespace-nowrap rounded-full bg-critical-soft px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-wide text-critical"
+                      >
+                        Devuelto
+                      </span>
+                    ) : (
+                      <span
+                        title="Esperando que la contraparte lo revise"
+                        className="whitespace-nowrap rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-wide text-[#8f5e1f]"
+                      >
+                        En revisión
+                      </span>
+                    )
                   ) : (
                     <span
                       title={item.nota_revision ?? "Revisado y aprobado"}
@@ -343,15 +406,47 @@ export default function ItemsTable({
                 </td>
                 {esAdmin && (
                   <td className="px-5 py-3">
-                    <div className="flex items-center gap-3">
-                      <Link
-                        href={`/dashboard/items/${item.id}/edit`}
-                        className="text-[13px] text-accent hover:underline"
+                    {/* Un movimiento liquidado no se edita, no se borra y no
+                        se devuelve a revisión: la base lo rechaza con un
+                        trigger (fase 24).
+                        Hoy no llega ninguno hasta acá —- el panel lista solo
+                        lo no liquidado y el detalle de un corte pasa
+                        esAdmin={false} —-, pero esta tabla la comparten dos
+                        pantallas y recibe esAdmin de afuera. No puede dar por
+                        sentado que quien la usa ya filtró: ofrecer un
+                        "Editar" que la base va a rechazar es peor que no
+                        ofrecer nada. */}
+                    {item.liquidacion_id !== null ? (
+                      <span
+                        title="Este corte ya está cerrado"
+                        className="text-[13px] text-ink-soft/60"
                       >
-                        Editar
-                      </Link>
-                      <DeleteButton itemId={item.id} numero={item.numero} />
-                    </div>
+                        Liquidado
+                      </span>
+                    ) : (
+                      <div className="flex items-center gap-3">
+                        <Link
+                          href={`/dashboard/items/${item.id}/edit`}
+                          className="text-[13px] text-accent hover:underline"
+                        >
+                          Editar
+                        </Link>
+                        {/* Solo sobre lo aprobado: desaprobar algo que ya
+                            está pendiente no significa nada. El botón vive
+                            en la fila, al lado del estado que deshace, y no
+                            en una pantalla aparte: quien ve el "Aprobado"
+                            equivocado es quien mira esta tabla. */}
+                        {item.revisado_at !== null && (
+                          <DesaprobarItem
+                            itemId={item.id}
+                            numero={item.numero}
+                            tipoFlujo={item.tipo_flujo}
+                            usdtTotal={Number(item.usdt_total)}
+                          />
+                        )}
+                        <DeleteButton itemId={item.id} numero={item.numero} />
+                      </div>
+                    )}
                   </td>
                 )}
                 <td className="px-5 py-3 text-right">

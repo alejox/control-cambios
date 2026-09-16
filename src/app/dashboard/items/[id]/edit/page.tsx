@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import ItemForm from "../../item-form";
 import { actualizarItem } from "../../actions";
-import { leerComisionGlobal } from "@/lib/configuracion";
+import { leerComisiones } from "@/lib/configuracion";
 import { monedaDeFlujo } from "@/lib/items";
 
 export default async function EditarItemPage({
@@ -42,7 +42,7 @@ export default async function EditarItemPage({
     .eq("item_id", id)
     .order("fecha", { ascending: true });
 
-  const comisionGlobalPct = await leerComisionGlobal();
+  const comisiones = await leerComisiones();
   const actualizarConId = actualizarItem.bind(null, id);
 
   return (
@@ -67,7 +67,7 @@ export default async function EditarItemPage({
       <ItemForm
         action={actualizarConId}
         siguienteNumero={item.numero}
-        comisionGlobalPct={comisionGlobalPct}
+        comisiones={comisiones}
         // Un cierre ya registrado conserva su propia moneda: la
         // preferencia del header no reescribe el pasado.
         monedaPreferida={monedaDeFlujo(item.tipo_flujo)}

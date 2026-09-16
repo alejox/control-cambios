@@ -13,10 +13,12 @@ import type { DatosComprobante } from "@/lib/comprobante";
 import {
   ETIQUETA_FLUJO,
   calcularComision,
+  comisionDeFlujo,
   flujoDeMoneda,
   formatMonto,
   monedaDeFlujo,
   usdtDesdeOrigen,
+  type Comisiones,
   type Deposito,
   type Moneda,
   type TipoFlujo,
@@ -90,7 +92,7 @@ function claveDe(par: ParReferencia, fecha: string) {
 export default function ItemForm({
   action,
   siguienteNumero,
-  comisionGlobalPct,
+  comisiones,
   monedaPreferida,
   puedeCambiarMoneda = true,
   initial,
@@ -101,9 +103,11 @@ export default function ItemForm({
   monedaPreferida: Moneda;
   /** false para el colaborador: solo puede registrar COP -> USDT. */
   puedeCambiarMoneda?: boolean;
-  /** Porcentaje vigente en la configuracion global, solo para mostrar.
+  /** Los DOS porcentajes vigentes, solo para mostrar. Llegan los dos y no
+   *  el que corresponde ya resuelto, porque el flujo puede cambiar sin
+   *  volver al servidor y el numero en pantalla tiene que seguirlo.
    *  El valor que se guarda lo sella la base, no este formulario. */
-  comisionGlobalPct: number;
+  comisiones: Comisiones;
   initial?: {
     numero: number;
     tipo_flujo: TipoFlujo;
@@ -214,9 +218,14 @@ export default function ItemForm({
   const usdtValor = usdtManual ?? (usdtCalculado !== null ? String(usdtCalculado) : "");
   const pisadoAMano = usdtManual !== null;
 
-  // El porcentaje no se elige acá: lo fija el admin en la configuracion
-  // global y la base lo sella al guardar. Aplica a los dos flujos.
-  const comisionPct = comisionGlobalPct;
+  // El porcentaje no se elige acá: lo fija el admin en la configuracion y
+  // la base lo sella al guardar. Lo que SI se decide acá es cual de los dos
+  // mostrar, y sale del flujo.
+  //
+  // Es un valor DERIVADO en render, no estado ni efecto: si el flujo cambia
+  // —porque el header cambio de moneda y el servidor volvio a renderizar—
+  // el porcentaje cambia solo, sin un useEffect que lo sincronice.
+  const comisionPct = comisionDeFlujo(comisiones, tipoFlujo);
   const usdtAGuardar = Number(usdtValor);
   const comisionUsdt =
     usdtValor.trim() !== "" && Number.isFinite(usdtAGuardar) && comisionPct > 0

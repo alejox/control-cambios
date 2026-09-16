@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import ComisionGlobal from "./comision-global";
+import ComisionesPorMoneda from "./comisiones-por-moneda";
 import ItemsTable, { type DepositoFila } from "./items-table";
 import LiquidarButton from "./liquidar-button";
-import { leerComisionGlobal } from "@/lib/configuracion";
-import { formatMonto, type Item } from "@/lib/items";
+import RecalcularComisiones from "./recalcular-comisiones";
+import { COMISION_PCT_FALLBACK, leerComisiones } from "@/lib/configuracion";
+import { formatMonto, resumirRecalculo, type Item } from "@/lib/items";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -59,7 +60,12 @@ export default async function DashboardPage() {
   const comisionCop = suma("cop_a_usdt", "comision");
   const sinAprobar = items.filter((i) => i.revisado_at === null).length;
 
-  const comisionGlobalPct = puedeVer ? await leerComisionGlobal() : 0;
+  // Sin permiso para ver no se consulta la configuracion: RLS la taparia
+  // igual. El fallback es solo para no arrastrar un null hasta el render
+  // de una rama que, de todas formas, no muestra el panel.
+  const comisiones = puedeVer
+    ? await leerComisiones()
+    : { bs: COMISION_PCT_FALLBACK, cop: COMISION_PCT_FALLBACK };
 
   // Los depositos de los movimientos en pantalla, en UNA consulta -- no
   // una por fila. ItemsTable los agrupa y saca de ahi el total recibido y
@@ -139,7 +145,17 @@ export default async function DashboardPage() {
             </div>
           </div>
 
-          <ComisionGlobal valor={comisionGlobalPct} esAdmin={esAdmin} />
+          {/* El boton de recalcular vive pegado a los dos campos y no en
+              la barra de acciones de la tabla: se necesita justo despues
+              de cambiar un porcentaje, no antes de liquidar. */}
+          <div className="flex flex-col gap-2.5">
+            <ComisionesPorMoneda valores={comisiones} esAdmin={esAdmin} />
+            {esAdmin && (
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                <RecalcularComisiones resumen={resumirRecalculo(items, comisiones)} />
+              </div>
+            )}
+          </div>
 
           <div className="flex items-center justify-between">
             <h1

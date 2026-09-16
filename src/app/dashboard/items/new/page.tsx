@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import ItemForm from "../item-form";
 import { crearItem } from "../actions";
-import { leerComisionGlobal } from "@/lib/configuracion";
+import { leerComisiones } from "@/lib/configuracion";
 import { leerMonedaPreferida } from "@/lib/preferencias";
 
 export default async function NuevoItemPage() {
@@ -37,7 +37,7 @@ export default async function NuevoItemPage() {
     .maybeSingle();
 
   const siguienteNumero = (ultimo?.numero ?? 0) + 1;
-  const comisionGlobalPct = await leerComisionGlobal();
+  const comisiones = await leerComisiones();
   // El colaborador solo registra COP -> USDT; la politica de RLS rechaza
   // cualquier otra cosa, asi que el formulario no le ofrece elegir.
   const monedaPreferida = esAdmin ? await leerMonedaPreferida() : "COP";
@@ -64,7 +64,7 @@ export default async function NuevoItemPage() {
       <ItemForm
         action={crearItem}
         siguienteNumero={siguienteNumero}
-        comisionGlobalPct={comisionGlobalPct}
+        comisiones={comisiones}
         monedaPreferida={monedaPreferida}
         puedeCambiarMoneda={esAdmin}
       />

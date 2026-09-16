@@ -27,10 +27,13 @@ export default function RevisionItem({
   item,
   depositos,
   comisionPct,
+  devueltoPor,
 }: {
   item: Item;
   depositos: DepositoRevision[];
   comisionPct: number;
+  /** Mail de quien lo devolvio a revision. null si no fue devuelto. */
+  devueltoPor: string | null;
 }) {
   // Un movimiento sin depositos no tiene checkboxes que tildar, asi que se
   // confirma entero. Sin esa rama quedaria pendiente para siempre y la
@@ -94,6 +97,24 @@ export default function RevisionItem({
           {item.tipo_flujo === "bs_a_usdt" ? "Bs → USDT" : "COP → USDT"}
         </span>
       </div>
+
+      {/* Si volvio a esta lista despues de haber sido aprobado, lo primero
+          que hay que ver es POR QUE. Sin esto la tarjeta reaparece igual a
+          todas las demas y se vuelve a aprobar sin mirar justo el numero
+          que cambio, que es lo unico que se pedia revisar. */}
+      {item.desaprobado_at !== null && (
+        <div className="rounded-[10px] border border-critical-soft bg-critical-soft/40 px-4 py-3 text-[12.5px] leading-relaxed text-ink-soft">
+          <p className="mb-1 font-mono text-[10.5px] uppercase tracking-widest text-critical">
+            Volvió a revisión
+          </p>
+          <p className="text-ink">{item.desaprobado_motivo}</p>
+          <p className="mt-1">
+            {devueltoPor ? `Lo devolvió ${devueltoPor}` : "Lo devolvió un administrador"}{" "}
+            el {formatFecha(item.desaprobado_at.slice(0, 10))}. Revisá el
+            número y aprobalo de nuevo si está bien.
+          </p>
+        </div>
+      )}
 
       <div className="rounded-[10px] bg-surface-alt/50 px-4 py-3 text-[12.5px] text-ink-soft">
         Entraron <span className="font-medium text-ink">{formatMonto(totalOrigen, moneda)}</span>
