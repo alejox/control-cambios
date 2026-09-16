@@ -63,7 +63,7 @@ export default async function LiquidacionPage({
   }
 
   return (
-    <div className="mx-auto w-[90%] px-6 py-10">
+    <div className="mx-auto w-full px-4 py-8 sm:w-[90%] sm:px-6 sm:py-10">
       <Link
         href="/dashboard/liquidaciones"
         className="mb-6 inline-flex items-center gap-1.5 text-[13px] text-ink-soft transition hover:text-ink"

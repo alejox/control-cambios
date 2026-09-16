@@ -92,7 +92,7 @@ export default async function DashboardPage() {
   }
 
   return (
-    <div className="mx-auto w-[90%] px-6 py-10">
+    <div className="mx-auto w-full px-4 py-8 sm:w-[90%] sm:px-6 sm:py-10">
       {profileError ? (
         <div className="rounded-2xl border border-critical-soft bg-critical-soft/40 p-7">
           <h1

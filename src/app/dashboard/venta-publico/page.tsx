@@ -84,7 +84,7 @@ export default async function VentaPublicoPage() {
   // distinto, o se pierde una tarde buscando datos que nunca se fueron.
 
   return (
-    <div className="mx-auto w-[90%] px-6 py-10">
+    <div className="mx-auto w-full px-4 py-8 sm:w-[90%] sm:px-6 sm:py-10">
       <div className="mb-8">
         <p className="mb-2.5 font-mono text-[11.5px] uppercase tracking-widest text-accent">
           Listas de precios para clientes

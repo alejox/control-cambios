@@ -62,6 +62,18 @@ function tieneComprobante(d: DepositoFila) {
  * y vive en su propio componente porque lo comparte con el panel de
  * revision.
  */
+const IconoDocumento = (
+  <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden>
+    <path
+      d="M9.2 1.9H4.6a1.2 1.2 0 0 0-1.2 1.2v9.8a1.2 1.2 0 0 0 1.2 1.2h6.8a1.2 1.2 0 0 0 1.2-1.2V5.1L9.2 1.9Z"
+      stroke="currentColor"
+      strokeWidth="1.3"
+      strokeLinejoin="round"
+    />
+    <path d="M9.1 2.1v3.2h3.4" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+  </svg>
+);
+
 export default function ItemsTable({
   items,
   depositos,
@@ -302,18 +314,21 @@ export default function ItemsTable({
           desplazar. El min-w fuerza el scroll horizontal antes de que las
           columnas se aplasten. */}
       <div className="overflow-x-auto">
-      <table className="w-full min-w-[1000px] text-left text-[13.5px]">
+      {/* El minimo de 1000px vale de md para arriba. Abajo la tabla entra
+          sola porque tres columnas se esconden, y arrastrar mil pixeles
+          de lado para leer una fila era justamente el problema. */}
+      <table className="w-full text-left text-[13.5px] md:min-w-[1000px]">
         <thead>
           <tr className="border-b border-border bg-surface-alt/60 text-[11px] uppercase tracking-wide text-ink-soft">
             <th className="px-5 py-3 font-medium">#</th>
             <th className="px-5 py-3 font-medium">Fecha</th>
             <th className="px-5 py-3 font-medium">Flujo</th>
             <th className="px-5 py-3 font-medium">Recibido</th>
-            <th className="px-5 py-3 font-medium">Tasa</th>
+            <th className="hidden px-5 py-3 font-medium md:table-cell">Tasa</th>
             <th className="px-5 py-3 font-medium">USDT</th>
-            <th className="px-5 py-3 font-medium">Comisión</th>
+            <th className="hidden px-5 py-3 font-medium md:table-cell">Comisión</th>
             <th className="px-5 py-3 font-medium">Estado</th>
-            <th className="px-5 py-3 font-medium">Referencia</th>
+            <th className="hidden px-5 py-3 font-medium md:table-cell">Referencia</th>
             <th className="px-5 py-3 font-medium">Comprobantes</th>
             {esAdmin && <th className="px-5 py-3 font-medium"></th>}
             <th className="px-5 py-3 font-medium"></th>
@@ -379,13 +394,13 @@ export default function ItemsTable({
                 <td className="px-5 py-3 text-ink-soft">
                   {formatMonto(totalOrigen, item.moneda_origen)}
                 </td>
-                <td className="px-5 py-3 text-ink-soft">
+                <td className="hidden px-5 py-3 text-ink-soft md:table-cell">
                   {item.tasa ? formatMonto(item.tasa, item.moneda_origen) : "—"}
                 </td>
                 <td className="px-5 py-3 font-medium text-ink">
                   {formatMonto(item.usdt_total, "USDT")}
                 </td>
-                <td className="px-5 py-3 text-ink-soft">
+                <td className="hidden px-5 py-3 text-ink-soft md:table-cell">
                   {formatMonto(item.comision, "USDT")}
                 </td>
                 <td className="px-5 py-3">
@@ -422,7 +437,7 @@ export default function ItemsTable({
                   )}
                 </td>
                 <td
-                  className="px-5 py-3 font-mono text-[12px] text-ink-soft"
+                  className="hidden px-5 py-3 font-mono text-[12px] text-ink-soft md:table-cell"
                   title={referencias.length > 1 ? referencias.join("  ·  ") : undefined}
                 >
                   {referencias.length === 0
@@ -432,15 +447,40 @@ export default function ItemsTable({
                       : "varias"}
                 </td>
                 <td className="px-5 py-3">
-                  {filas.length === 0 ? (
-                    <span className="text-ink-soft">—</span>
-                  ) : (
-                    <span
-                      title={`${filas.length} depósito${filas.length === 1 ? "" : "s"}, ${conComprobante.length} con comprobante`}
-                      className="font-mono text-ink-soft"
-                    >
-                      {conComprobante.length}
+                  {conComprobante.length === 0 ? (
+                    <span className="text-ink-soft" title="Sin comprobante">
+                      —
                     </span>
+                  ) : (
+                    // Uno solo se abre derecho; varios expanden la fila,
+                    // donde cada depósito tiene el suyo. Adivinar cuál de
+                    // tres queria ver seria acertar una de cada tres veces.
+                    <button
+                      type="button"
+                      onClick={() =>
+                        conComprobante.length === 1
+                          ? abrirComprobante(conComprobante[0])
+                          : setAbierto(expandida ? null : item.id)
+                      }
+                      title={
+                        conComprobante.length === 1
+                          ? "Ver el comprobante"
+                          : `Ver los ${conComprobante.length} comprobantes`
+                      }
+                      aria-label={
+                        conComprobante.length === 1
+                          ? "Ver el comprobante"
+                          : `Ver los ${conComprobante.length} comprobantes`
+                      }
+                      className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-ink-soft transition hover:bg-surface-alt hover:text-ink"
+                    >
+                      {IconoDocumento}
+                      {conComprobante.length > 1 && (
+                        <span className="font-mono text-[11px]">
+                          {conComprobante.length}
+                        </span>
+                      )}
+                    </button>
                   )}
                 </td>
                 {esAdmin && (
@@ -536,7 +576,7 @@ export default function ItemsTable({
                     <td className="px-5 py-2 text-ink-soft">
                       {formatMonto(d.valor_origen, item.moneda_origen)}
                     </td>
-                    <td className="px-5 py-2 text-ink-soft">
+                    <td className="hidden px-5 py-2 text-ink-soft md:table-cell">
                       {item.tasa ? formatMonto(item.tasa, item.moneda_origen) : "—"}
                     </td>
                     <td
@@ -546,7 +586,7 @@ export default function ItemsTable({
                       {formatMonto(usdtDe(d), "USDT")}
                       {d.usdt === null && <span className="text-ink-soft">*</span>}
                     </td>
-                    <td className="px-5 py-2 text-ink-soft">
+                    <td className="hidden px-5 py-2 text-ink-soft md:table-cell">
                       {formatMonto(comisiones[i] ?? 0, "USDT")}
                     </td>
                     <td className="px-5 py-2">
@@ -560,7 +600,7 @@ export default function ItemsTable({
                         </span>
                       )}
                     </td>
-                    <td className="px-5 py-2 font-mono text-[12px] text-ink-soft">
+                    <td className="hidden px-5 py-2 font-mono text-[12px] text-ink-soft md:table-cell">
                       {(() => {
                         if (!d.referencia) return "sin referencia";
                         const partes = partirPorBusqueda(d.referencia, refBuscada);
