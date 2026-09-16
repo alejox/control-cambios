@@ -247,3 +247,92 @@ export async function invitarUsuario(
   revalidatePath("/dashboard/usuarios");
   return { error: null, link };
 }
+
+export type AccesoState = { error: string | null; link: string | null };
+
+/**
+ * Genera un link de acceso para una cuenta que YA existe.
+ *
+ * Es el caso que "Invitar" rechaza a proposito: alguien que perdio la
+ * contraseña o que nunca llego a definirla. Sin SMTP, /forgot-password no
+ * puede mandar nada, asi que el admin genera el link y se lo hace llegar.
+ */
+export async function regenerarAcceso(
+  _prevState: AccesoState,
+  formData: FormData,
+): Promise<AccesoState> {
+  const userId = (formData.get("user_id") as string) ?? "";
+  if (!userId) return { error: "Falta el usuario.", link: null };
+
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Tu sesión venció.", link: null };
+
+  const { data: yo } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  if (yo?.role !== "admin") {
+    return { error: "Solo un administrador puede generar links de acceso.", link: null };
+  }
+
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return {
+      error: "Falta configurar SUPABASE_SERVICE_ROLE_KEY en el servidor.",
+      link: null,
+    };
+  }
+
+  const admin = createAdminClient();
+
+  // El correo se busca por id y no se toma del formulario: un correo que viene
+  // del cliente se puede cambiar, y eso seria generarle un link de acceso a una
+  // cuenta cualquiera.
+  const { data: perfil, error: perfilError } = await admin
+    .from("profiles")
+    .select("email")
+    .eq("id", userId)
+    .single();
+
+  if (perfilError || !perfil) {
+    return { error: "No se encontró esa cuenta.", link: null };
+  }
+
+  const email = (perfil.email as string | null) ?? "";
+  if (!email) {
+    return {
+      error: "Esa cuenta no tiene correo cargado, así que no hay a quién generarle el link.",
+      link: null,
+    };
+  }
+
+  // headers() es async desde Next 15; el origen sale de la request para que el
+  // link sirva igual en local que en produccion, sin una variable de entorno mas.
+  const h = await headers();
+  const host = h.get("host");
+  if (!host) {
+    return { error: "No se pudo armar el link: falta el host de la request.", link: null };
+  }
+  const proto = h.get("x-forwarded-proto") ?? "http";
+  const redirectTo = `${proto}://${host}/auth/callback?next=/update-password`;
+
+  // Va como "recovery" y no como "invite" porque la cuenta ya existe: "invite"
+  // es para dar de alta y falla contra un correo que ya esta registrado.
+  // "recovery" termina en la misma pantalla de contraseña, que es lo unico que
+  // se necesita acá.
+  const { data, error } = await admin.auth.admin.generateLink({
+    type: "recovery",
+    email,
+    options: { redirectTo },
+  });
+
+  if (error) return { error: error.message, link: null };
+
+  revalidatePath("/dashboard/usuarios");
+  return { error: null, link: data.properties.action_link };
+}

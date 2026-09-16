@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import RolSelect from "./rol-select";
 import EliminarUsuario from "./eliminar-usuario";
 import InvitarUsuario from "./invitar-usuario";
+import RegenerarAcceso from "./regenerar-acceso";
 
 type Perfil = {
   id: string;
@@ -84,6 +85,7 @@ export default async function UsuariosPage() {
                 </div>
                 <div className="flex items-center gap-4">
                   <RolSelect userId={p.id} rol={p.role} esYo={p.id === user.id} />
+                  <RegenerarAcceso userId={p.id} email={p.email} />
                   {p.id !== user.id && (
                     <EliminarUsuario userId={p.id} email={p.email} />
                   )}
