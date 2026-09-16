@@ -3,7 +3,7 @@
 import { useActionState, useRef } from "react";
 import { liquidar, type LiquidarState } from "./liquidaciones/actions";
 import { formatMonto } from "@/lib/items";
-import { cobraCadaLado, favorDe } from "@/lib/liquidaciones";
+import { previaDeCorte } from "@/lib/liquidaciones";
 
 /**
  * Cierra las cuentas entre las dos partes. Muestra el corte antes de
@@ -33,15 +33,14 @@ export default function LiquidarButton({
   );
 
   // Cada lado cobra sus ventas MAS la comision que le genera el otro. El
-  // neto es la diferencia entre lo que cobra cada uno.
-  const cobra = cobraCadaLado({
+  // neto es la diferencia entre lo que cobra cada uno. La misma previa que
+  // muestran las tarjetas del panel, y por eso sale del mismo lugar.
+  const { cobra, favor } = previaDeCorte({
     usdt_bs: usdtBs,
     usdt_cop: usdtCop,
     comision_bs: comisionBs,
     comision_cop: comisionCop,
   });
-  const neto = Math.round((cobra.bs - cobra.cop) * 100) / 100;
-  const favor = favorDe(neto);
   // No se liquida con algo sin aprobar: seria cerrar cuentas sobre montos
   // que la contraparte nunca confirmo. La base tambien lo rechaza; esto es
   // para que no haya que llegar al error para enterarse.

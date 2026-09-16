@@ -7,6 +7,7 @@ import LiquidarButton from "./liquidar-button";
 import RecalcularComisiones from "./recalcular-comisiones";
 import { COMISION_PCT_FALLBACK, leerComisiones } from "@/lib/configuracion";
 import { formatMonto, resumirRecalculo, type Item } from "@/lib/items";
+import { previaDeCorte } from "@/lib/liquidaciones";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -51,7 +52,6 @@ export default async function DashboardPage() {
   const totalUsdtCop = items
     .filter((i) => i.tipo_flujo === "cop_a_usdt")
     .reduce((acc, i) => acc + Number(i.usdt_total), 0);
-  const totalComision = items.reduce((acc, i) => acc + Number(i.comision), 0);
   const suma = (flujo: string, campo: "usdt_total" | "comision") =>
     items
       .filter((i) => i.tipo_flujo === flujo)
@@ -59,6 +59,17 @@ export default async function DashboardPage() {
   const comisionBs = suma("bs_a_usdt", "comision");
   const comisionCop = suma("cop_a_usdt", "comision");
   const sinAprobar = items.filter((i) => i.revisado_at === null).length;
+
+  // Lo pendiente leido como se lee un corte cerrado. La cuenta no se rehace
+  // aca: sale de previaDeCorte, el mismo lugar del que la saca el dialogo de
+  // liquidar. Si el panel y el corte contaran distinto, la plata que se debe
+  // dependeria de en que pantalla se la mire.
+  const previa = previaDeCorte({
+    usdt_bs: totalUsdtBs,
+    usdt_cop: totalUsdtCop,
+    comision_bs: comisionBs,
+    comision_cop: comisionCop,
+  });
 
   // Sin permiso para ver no se consulta la configuracion: RLS la taparia
   // igual. El fallback es solo para no arrastrar un null hasta el render
@@ -115,7 +126,12 @@ export default async function DashboardPage() {
         </div>
       ) : (
         <div className="flex flex-col gap-8">
-          <div className="grid grid-cols-3 gap-5">
+          {/* Las mismas CUATRO deudas que muestra un corte cerrado, pero
+              sobre lo que todavia esta pendiente. Una comision global
+              sumada no dice de quien es: la comision no se evapora,
+              cambia de manos, y escondida adentro de un neto no hay forma
+              de verificar a quien le toca. */}
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-[0.8fr_1fr_1fr_1.2fr]">
             <div className="rounded-2xl border border-border bg-surface p-6 shadow-sm">
               <p className="mb-1.5 font-mono text-[11px] uppercase tracking-widest text-ink-soft">
                 Movimientos pendientes
@@ -124,23 +140,92 @@ export default async function DashboardPage() {
                 {totalItems}
               </p>
               <p className="mt-1 text-[12.5px] text-ink-soft">
-                Comisiones: {formatMonto(totalComision, "USDT")}
+                {totalItems === 0
+                  ? "Nada que liquidar"
+                  : sinAprobar > 0
+                    ? `${sinAprobar} sin aprobar`
+                    : "Todos aprobados"}
               </p>
             </div>
             <div className="rounded-2xl border border-accent-soft bg-accent-soft/30 p-6">
-              <p className="mb-1.5 font-mono text-[11px] uppercase tracking-widest text-[#8f5e1f]">
-                Total ventas (Bs → USDT)
+              <p className="mb-3 font-mono text-[11px] uppercase tracking-widest text-[#8f5e1f]">
+                Cobra quien recibió en Bs
               </p>
-              <p className="text-2xl font-medium text-ink" style={{ fontFamily: "var(--font-display)" }}>
-                {formatMonto(totalUsdtBs, "USDT")}
+              <div className="flex flex-col gap-1.5 text-[13px]">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-ink-soft">Ventas en Bs</span>
+                  <span className="text-ink">{formatMonto(totalUsdtBs, "USDT")}</span>
+                </div>
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-ink-soft">Comisiones en COP</span>
+                  <span className="text-teal">+ {formatMonto(comisionCop, "USDT")}</span>
+                </div>
+              </div>
+              <p
+                className="mt-3 border-t border-accent-soft pt-3 text-2xl font-medium text-ink"
+                style={{ fontFamily: "var(--font-display)" }}
+              >
+                {formatMonto(previa.cobra.bs, "USDT")}
               </p>
             </div>
             <div className="rounded-2xl border border-teal-soft bg-teal-soft/30 p-6">
-              <p className="mb-1.5 font-mono text-[11px] uppercase tracking-widest text-[#215d4d]">
-                Total ventas (COP → USDT)
+              <p className="mb-3 font-mono text-[11px] uppercase tracking-widest text-[#215d4d]">
+                Cobra quien recibió en COP
               </p>
-              <p className="text-2xl font-medium text-ink" style={{ fontFamily: "var(--font-display)" }}>
-                {formatMonto(totalUsdtCop, "USDT")}
+              <div className="flex flex-col gap-1.5 text-[13px]">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-ink-soft">Ventas en COP</span>
+                  <span className="text-ink">{formatMonto(totalUsdtCop, "USDT")}</span>
+                </div>
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-ink-soft">Comisiones en Bs</span>
+                  <span className="text-teal">+ {formatMonto(comisionBs, "USDT")}</span>
+                </div>
+              </div>
+              <p
+                className="mt-3 border-t border-teal-soft pt-3 text-2xl font-medium text-ink"
+                style={{ fontFamily: "var(--font-display)" }}
+              >
+                {formatMonto(previa.cobra.cop, "USDT")}
+              </p>
+            </div>
+
+            {/* El neto va con la misma cara que en el corte, pero avisando
+                que todavia no es nadie: estos movimientos se pueden
+                aprobar, ajustar o desaprobar antes de liquidar. */}
+            <div className="flex flex-col justify-between rounded-2xl bg-ink p-6 text-[#F3F1EA]">
+              <p className="font-mono text-[11px] uppercase tracking-widest text-[#D99A46]">
+                Neto provisorio
+              </p>
+
+              <div className="mt-3">
+                <p className="font-mono text-[12.5px] text-[#A9AE9F]">
+                  {previa.favor.lado === "cop"
+                    ? `${formatMonto(previa.cobra.cop, "USDT")} − ${formatMonto(previa.cobra.bs, "USDT")}`
+                    : `${formatMonto(previa.cobra.bs, "USDT")} − ${formatMonto(previa.cobra.cop, "USDT")}`}
+                </p>
+                <p
+                  className="text-[32px] leading-tight font-medium"
+                  style={{ fontFamily: "var(--font-display)" }}
+                >
+                  {formatMonto(previa.favor.monto, "USDT")}
+                </p>
+              </div>
+
+              <p className="mt-3 flex items-center gap-2 text-[12.5px] text-[#A9AE9F]">
+                {totalItems > 0 && previa.favor.lado !== "ninguno" && (
+                  <span
+                    className={`h-2 w-2 flex-none rounded-full ${
+                      previa.favor.lado === "bs" ? "bg-[#D99A46]" : "bg-[#7FCBAE]"
+                    }`}
+                    aria-hidden
+                  />
+                )}
+                {totalItems === 0 ? "No hay nada pendiente" : previa.favor.frase}
+              </p>
+
+              <p className="mt-2 text-[11.5px] leading-relaxed text-[#A9AE9F]">
+                Provisorio: se congela recién al liquidar.
               </p>
             </div>
           </div>
