@@ -1,0 +1,29 @@
+-- ============================================================
+-- Fase 40: la pantalla se entera sola de los movimientos nuevos
+-- Pega este archivo completo en Supabase -> SQL Editor -> Run
+-- (una sola vez)
+-- ============================================================
+--
+-- Hasta acá la campanita y la tabla del panel se renderizaban en el
+-- servidor y solo se enteraban al navegar o recargar. Si la otra parte
+-- cargaba un movimiento —- o lo mandaba el bot de Telegram -— podías
+-- estar mirando una pantalla vieja sin saberlo.
+--
+-- Se publica SOLO items, y a propósito:
+--
+--   depositos no, porque un álbum de Telegram inserta N filas para UN
+--   movimiento: serían N eventos para decir lo mismo. El insert del item
+--   ya alcanza como señal, y el refresco se trae los depósitos igual.
+--
+--   liquidaciones no, porque cerrar un corte es algo que hacés vos, en
+--   la pantalla en la que ya estás. No hay nada de qué enterarse.
+--
+-- El cliente usa el evento como SEÑAL, no como dato: no lee el payload,
+-- llama a router.refresh() y el servidor vuelve a renderizar con RLS
+-- aplicado. Por eso no hace falta replica identity full —- lo único que
+-- importa es que algo pasó, no qué campo cambió.
+--
+-- Costo: dos usuarios son dos conexiones de las 200 del plan, y unos
+-- pocos miles de mensajes al mes contra una cuota de dos millones.
+
+alter publication supabase_realtime add table public.items;

@@ -6,6 +6,7 @@ import Sidebar from "./sidebar";
 import SelectorMoneda from "./selector-moneda";
 import SignOutButton from "./sign-out-button";
 import Campana from "./campana";
+import EscuchaMovimientos from "./escucha-movimientos";
 import ConectarTelegram from "./conectar-telegram";
 
 /**
@@ -68,6 +69,10 @@ export default async function DashboardLayout({
           </span>
         </div>
       </aside>
+
+      {/* No pinta nada: escucha los movimientos y refresca lo que ya
+          esta en pantalla, campanita incluida. */}
+      {puedeVer && <EscuchaMovimientos />}
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-end gap-4 border-b border-border bg-surface px-6 py-3.5">
