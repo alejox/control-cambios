@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import SesionEnFragmento from "./sesion-en-fragmento";
 
 /**
  * Solo inicio de sesión. Las cuentas se crean a mano desde Supabase:
@@ -93,6 +94,11 @@ export default function LoginPage() {
           >
             Inicia sesión
           </h2>
+
+          {/* Los enlaces de invitación dejan la sesión —o su error— en el
+              fragmento de la URL, que nunca llega al servidor. Esto lo lee
+              acá, en el navegador, antes de que se pierda. */}
+          <SesionEnFragmento />
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
