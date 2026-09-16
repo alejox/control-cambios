@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Fragment, useRef, useState, useTransition } from "react";
 import DeleteButton from "./items/delete-button";
 import DesaprobarItem from "./items/desaprobar-item";
 import VisorComprobante, { type VisorHandle } from "./visor-comprobante";
@@ -62,6 +63,24 @@ function tieneComprobante(d: DepositoFila) {
  * y vive en su propio componente porque lo comparte con el panel de
  * revision.
  */
+const IconoRefrescar = (
+  <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden>
+    <path
+      d="M13.6 8a5.6 5.6 0 1 1-1.7-4"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+    />
+    <path
+      d="M13.4 1.6v2.8h-2.8"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 const IconoDocumento = (
   <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden>
     <path
@@ -282,14 +301,17 @@ export default function ItemsTable({
           <label htmlFor="f-ref" className="font-mono text-[10px] uppercase tracking-widest text-ink-soft">
             Referencia
           </label>
-          <input
-            id="f-ref"
-            type="search"
-            value={buscaRef}
-            onChange={(e) => setBuscaRef(e.target.value)}
-            placeholder="Buscar por referencia…"
-            className="h-9 rounded-[9px] border border-border bg-surface px-3 text-[13px] outline-none focus:border-accent focus:ring-1 focus:ring-accent"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              id="f-ref"
+              type="search"
+              value={buscaRef}
+              onChange={(e) => setBuscaRef(e.target.value)}
+              placeholder="Buscar por referencia…"
+              className="h-9 min-w-0 flex-1 rounded-[9px] border border-border bg-surface px-3 text-[13px] outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+            />
+            <Refrescar />
+          </div>
         </div>
 
         {hayFiltro && (
@@ -642,5 +664,40 @@ export default function ItemsTable({
 
       <VisorComprobante ref={visorRef} />
     </>
+  );
+}
+
+/**
+ * Trae de nuevo la tabla desde el servidor.
+ *
+ * Existe aunque el panel ya se refresque solo con Realtime, porque ese
+ * aviso llega cuando cambia un MOVIMIENTO y no cuando cambia algo que la
+ * tabla deriva de otro lado —- el porcentaje de comisión, un corte que se
+ * cerró en otra pestaña -—, ni si el WebSocket se cayó y volvió sin que
+ * nadie se entere. Un botón que trae lo último es la salida para cuando
+ * uno duda de lo que está viendo, y esa duda aparece igual aunque la
+ * actualización automática funcione perfecto.
+ *
+ * router.refresh() y no location.reload(): el servidor vuelve a renderizar
+ * y React reemplaza solo lo que cambió, así que no se pierde el filtro
+ * escrito, ni la fila que estaba expandida, ni la posición del scroll.
+ */
+function Refrescar() {
+  const router = useRouter();
+  const [pendiente, empezar] = useTransition();
+
+  return (
+    <button
+      type="button"
+      onClick={() => empezar(() => router.refresh())}
+      disabled={pendiente}
+      title="Traer los movimientos más recientes"
+      aria-label="Actualizar la tabla"
+      className="flex h-9 w-9 flex-none items-center justify-center rounded-[9px] border border-border bg-surface text-ink-soft transition hover:text-ink disabled:opacity-50"
+    >
+      <span className={pendiente ? "animate-spin" : ""} aria-hidden>
+        {IconoRefrescar}
+      </span>
+    </button>
   );
 }
