@@ -173,6 +173,24 @@ export function usdtDesdeOrigen(totalOrigen: number, tasa: number): number {
 }
 
 /**
+ * La misma conversion al reves: que tasa implica haber recibido `usdt` por
+ * `totalOrigen`.
+ *
+ * Existe porque el total en USDT no siempre se deduce: muchas veces es el
+ * dato duro —- lo que efectivamente entro a la wallet -— y entonces la
+ * tasa es lo derivado. Decirlo al reves seria pedirle al usuario que
+ * despeje una division a mano para tipear un numero que ya tiene.
+ *
+ * Redondea a 4 decimales porque esa es la escala de items.tasa:
+ * numeric(14,4). Guardar mas precision de la que entra en la columna hace
+ * que lo mostrado y lo guardado dejen de coincidir en el segundo decimal
+ * del total, que es justo donde se notan las diferencias de plata.
+ */
+export function tasaDesdeUsdt(totalOrigen: number, usdt: number): number {
+  return Math.round((totalOrigen / usdt) * 10000) / 10000;
+}
+
+/**
  * Reparte un total entre varias partes segun sus pesos, garantizando que la
  * suma de las partes sea EXACTAMENTE el total.
  *

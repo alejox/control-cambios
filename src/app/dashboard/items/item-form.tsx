@@ -18,6 +18,7 @@ import {
   flujoDeMoneda,
   formatMonto,
   monedaDeFlujo,
+  tasaDesdeUsdt,
   usdtDesdeOrigen,
   type Comisiones,
   type Deposito,
@@ -73,17 +74,27 @@ function sumarDepositos(filas: FilaDeposito[]) {
   }, 0);
 }
 
-// El total en USDT es un valor DERIVADO de la conversion: lo que se recibio
-// en Bs/COP dividido entre la tasa. No es un dato que haya que tipear.
+// Tasa y total en USDT son dos vistas de la MISMA division, y cualquiera de
+// las dos puede ser el dato duro. A veces se sabe la tasa y el total sale
+// solo; a veces lo que se sabe es cuanto entro a la wallet, y entonces la
+// tasa es lo que hay que despejar. Por eso escribir en cualquiera de los
+// dos campos recalcula el otro.
 //
-// La division en si vive en lib/items (usdtDesdeOrigen) porque el bot de
-// Telegram hace la misma cuenta; aca queda solo la validacion del campo de
-// texto, que es lo unico propio del formulario.
+// Las divisiones viven en lib/items (usdtDesdeOrigen, tasaDesdeUsdt) porque
+// el bot de Telegram hace la misma cuenta; aca queda solo la validacion del
+// campo de texto, que es lo unico propio del formulario.
 function calcularUsdt(totalOrigen: number, tasaRaw: string) {
   const tasa = Number(tasaRaw);
   if (tasaRaw.trim() === "" || !Number.isFinite(tasa) || tasa <= 0) return null;
   if (totalOrigen <= 0) return null;
   return usdtDesdeOrigen(totalOrigen, tasa);
+}
+
+function calcularTasa(totalOrigen: number, usdtRaw: string) {
+  const usdt = Number(usdtRaw);
+  if (usdtRaw.trim() === "" || !Number.isFinite(usdt) || usdt <= 0) return null;
+  if (totalOrigen <= 0) return null;
+  return tasaDesdeUsdt(totalOrigen, usdt);
 }
 
 function claveDe(par: ParReferencia, fecha: string) {
@@ -228,6 +239,17 @@ export default function ItemForm({
   // el porcentaje cambia solo, sin un useEffect que lo sincronice.
   const comisionPct = comisionDeFlujo(comisiones, tipoFlujo);
   const usdtAGuardar = Number(usdtValor);
+
+  // Escribir el total fija la tasa, pero la tasa entra en numeric(14,4):
+  // al recortarla a cuatro decimales, dividir de vuelta puede dar uno o dos
+  // centavos de diferencia. Se guarda lo tipeado —- es lo que entro a la
+  // wallet -— y la diferencia se dice en pantalla en vez de esconderse: un
+  // centavo que aparece sin explicacion hace dudar de todo el resto.
+  const difiereDelCalculo =
+    pisadoAMano &&
+    usdtCalculado !== null &&
+    Number.isFinite(usdtAGuardar) &&
+    Math.abs(usdtCalculado - usdtAGuardar) >= 0.005;
   const comisionUsdt =
     usdtValor.trim() !== "" && Number.isFinite(usdtAGuardar) && comisionPct > 0
       ? calcularComision(usdtAGuardar, comisionPct)
@@ -567,7 +589,10 @@ export default function ItemForm({
             {tasaPisadaAMano && fuente !== null && (
               <button
                 type="button"
-                onClick={() => setTasaManual(null)}
+                onClick={() => {
+                  setTasaManual(null);
+                  setUsdtManual(null);
+                }}
                 className="text-[11.5px] text-accent transition hover:underline"
               >
                 Usar {fuente.etiqueta}
@@ -580,7 +605,13 @@ export default function ItemForm({
             step="0.0001"
             min={0}
             value={tasa}
-            onChange={(e) => setTasaManual(e.target.value)}
+            onChange={(e) => {
+              // Escribir la tasa devuelve el total a su papel de derivado:
+              // si quedara pisado a mano, los dos campos se contradirian y
+              // el que se guarda no seria el que el usuario esta mirando.
+              setTasaManual(e.target.value);
+              setUsdtManual(null);
+            }}
             placeholder={esBs ? "Ej: 950" : "Se toma la TRM"}
             className="h-11 rounded-[10px] border border-border bg-surface px-3.5 text-sm outline-none focus:border-accent focus:ring-1 focus:ring-accent"
           />
@@ -588,15 +619,6 @@ export default function ItemForm({
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between">
             <label className="text-[13px] font-medium text-ink-soft">Total USDT</label>
-            {pisadoAMano && usdtCalculado !== null && (
-              <button
-                type="button"
-                onClick={() => setUsdtManual(null)}
-                className="text-[11.5px] text-accent transition hover:underline"
-              >
-                Usar el cálculo
-              </button>
-            )}
           </div>
           <input
             name="usdt_total"
@@ -605,8 +627,22 @@ export default function ItemForm({
             min={0}
             required
             value={usdtValor}
-            onChange={(e) => setUsdtManual(e.target.value)}
-            placeholder="Se calcula solo"
+            onChange={(e) => {
+              const escrito = e.target.value;
+              setUsdtManual(escrito);
+
+              // Escribir el total ES fijar la tasa: es la misma division
+              // despejada del otro lado. Se guarda el numero tipeado tal
+              // cual —- es lo que realmente entro a la wallet -— y la tasa
+              // pasa a ser lo derivado.
+              //
+              // Si todavia no hay depositos no hay de que despejar, y la
+              // tasa se deja como esta en vez de borrarla: el usuario
+              // suele cargar el total antes que los comprobantes.
+              const despejada = calcularTasa(totalOrigen, escrito);
+              if (despejada !== null) setTasaManual(String(despejada));
+            }}
+            placeholder="Se calcula solo, o escribilo y se ajusta la tasa"
             className="h-11 rounded-[10px] border border-border bg-surface px-3.5 text-sm outline-none focus:border-accent focus:ring-1 focus:ring-accent"
           />
         </div>
@@ -650,17 +686,24 @@ export default function ItemForm({
       <div className="-mt-4 flex flex-col gap-2">
         <p className="text-[12.5px] leading-relaxed text-ink-soft">
           {usdtCalculado === null ? (
-            <>Carga la tasa y al menos un depósito: el total en USDT sale de esa conversión.</>
-          ) : pisadoAMano ? (
             <>
-              La conversión da{" "}
-              <span className="font-medium text-ink">{formatMonto(usdtCalculado, "USDT")}</span> (
-              {formatMonto(totalOrigen, moneda)} ÷ {tasa}). Estás guardando otro valor a mano.
+              Cargá al menos un depósito: la tasa y el total en USDT se derivan
+              uno del otro, y los dos necesitan saber cuánto entró.
             </>
           ) : (
             <>
               {formatMonto(totalOrigen, moneda)} ÷ {tasa} ={" "}
               <span className="font-medium text-ink">{formatMonto(usdtCalculado, "USDT")}</span>
+              {difiereDelCalculo && (
+                <>
+                  {" · se guarda "}
+                  <span className="font-medium text-ink">
+                    {formatMonto(usdtAGuardar, "USDT")}
+                  </span>
+                  , que es lo que escribiste: la diferencia es el redondeo de la
+                  tasa a cuatro decimales.
+                </>
+              )}
             </>
           )}
         </p>
