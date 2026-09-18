@@ -104,7 +104,7 @@ export default function SesionEnFragmento() {
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-background px-6">
       <p className="font-mono text-[11.5px] uppercase tracking-widest text-accent">
-        Control de Cambios
+        Cotejo
       </p>
       <p
         className="text-[26px] font-medium text-ink"

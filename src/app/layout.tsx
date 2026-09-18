@@ -3,16 +3,20 @@ import "./globals.css";
 import RegistrarSW from "./registrar-sw";
 
 export const metadata: Metadata = {
-  title: "Control de Cambios",
-  description: "Control de cambios y conversión a USDT",
-  // iOS no lee el manifest: para que el icono de la pantalla de inicio
-  // abra sin la barra del navegador hacen falta estas dos.
+  title: "Cotejo",
+  description: "Cambios a USDT, cotejados con la contraparte.",
+  // iOS no lee el manifest: sin esto el icono de la pantalla de inicio
+  // abre con la barra del navegador encima.
   appleWebApp: {
     capable: true,
-    title: "Cambios",
+    title: "Cotejo",
     statusBarStyle: "default",
   },
-  icons: { apple: "/icons/apple-touch-icon.png" },
+  // Los iconos NO se declaran aca a proposito: van por convencion de
+  // archivos (src/app/favicon.ico, icon.svg y apple-icon.png). Poner
+  // `icons` a mano PISA la convencion, y eso fue exactamente lo que
+  // pasaba: con `icons.apple` declarado, el icon.svg existia y no se
+  // enlazaba nunca. El unico <link rel="icon"> del HTML era el de Apple.
 };
 
 export const viewport: Viewport = {

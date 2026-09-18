@@ -58,7 +58,7 @@ export default function LoginPage() {
           <div className="mb-14 flex items-center gap-2.5">
             <Marca tamano={24} className="flex-none" />
             <span className="font-mono text-[12.5px] uppercase tracking-widest text-[#D99A46]">
-              Control de Cambios
+              Cotejo
             </span>
           </div>
 

@@ -45,7 +45,7 @@ export default function UpdatePasswordForm() {
     <div className="flex min-h-screen items-center justify-center bg-background px-6 py-12">
       <div className="w-full max-w-sm">
         <p className="mb-2.5 font-mono text-[11.5px] uppercase tracking-widest text-accent">
-          Control de Cambios
+          Cotejo
         </p>
         <h1
           className="mb-3 text-[26px] font-medium text-ink"

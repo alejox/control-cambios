@@ -9,9 +9,9 @@ import type { MetadataRoute } from "next";
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Control de Cambios",
-    short_name: "Cambios",
-    description: "Control de cambios y conversión a USDT",
+    name: "Cotejo",
+    short_name: "Cotejo",
+    description: "Cambios a USDT, cotejados con la contraparte.",
     lang: "es",
     start_url: "/dashboard",
     scope: "/",
@@ -25,9 +25,10 @@ export default function manifest(): MetadataRoute.Manifest {
     icons: [
       { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
       { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
-      // El mismo archivo como maskable: el punto ocupa el 52% del lado, así
-      // que entra entero en la zona segura del 80% que recorta Android para
-      // darle al icono la forma del sistema.
+      // El mismo archivo como maskable: la marca ocupa el 78% del lado, así
+      // que entra entera en la zona segura del 80% que recorta Android para
+      // darle al icono la forma del sistema. Ese 78% lo fija
+      // scripts/genera-iconos.py, que es quien produce estos PNG.
       { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
   };

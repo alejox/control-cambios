@@ -94,12 +94,12 @@ export default function BarraLateral({
       <Link
         href="/dashboard"
         className={`flex items-center gap-2.5 ${colapsado ? "justify-center" : "justify-start"}`}
-        title="Control de Cambios"
+        title="Cotejo"
       >
         <Marca tamano={22} className="flex-none" />
         {!colapsado && (
           <span className="truncate font-mono text-[12px] uppercase tracking-widest text-[#D99A46]">
-            Control de Cambios
+            Cotejo
           </span>
         )}
       </Link>
