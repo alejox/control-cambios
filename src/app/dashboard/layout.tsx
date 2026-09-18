@@ -1,8 +1,8 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { leerMonedaPreferida } from "@/lib/preferencias";
-import Sidebar, { MenuInferior } from "./sidebar";
+import { leerMonedaPreferida, leerSidebarColapsado } from "@/lib/preferencias";
+import BarraLateral from "./barra-lateral";
+import { MenuInferior } from "./sidebar";
 import SelectorMoneda from "./selector-moneda";
 import SignOutButton from "./sign-out-button";
 import Campana from "./campana";
@@ -38,6 +38,7 @@ export default async function DashboardLayout({
   const esAdmin = role === "admin";
   const puedeVer = esAdmin || role === "colaborador";
   const monedaPreferida = await leerMonedaPreferida();
+  const sidebarColapsado = await leerSidebarColapsado();
 
   // Cada uno solo ve su propio vínculo (política "cada uno ve su vinculo de
   // telegram"). maybeSingle y no single: no tener chat conectado es el
@@ -50,36 +51,13 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex min-h-screen bg-background">
-      {/* sticky y no fixed: sticky sigue ocupando su lugar en el flex, asi
-          que el contenido se acomoda solo. Con fixed habria que compensar
-          con un margen izquierdo que hay que mantener igual al ancho en
-          cada breakpoint (w-16 y md:w-60), y el dia que uno cambia y el
-          otro no, el contenido se monta encima o deja una franja.
-
-          h-screen en vez de estirarse con la pagina: asi el bloque del
-          usuario, que va con mt-auto, queda pegado al borde de LA
-          PANTALLA y no al final de un documento que puede medir tres
-          pantallas. overflow-y-auto por si algun dia hay mas entradas
-          que alto. */}
-      <aside className="sticky top-0 hidden h-screen w-16 md:flex flex-none flex-col gap-6 overflow-y-auto bg-ink px-2.5 py-5 md:w-60 md:px-4">
-        <Link href="/dashboard" className="flex items-center justify-center gap-2.5 md:justify-start">
-          <span className="h-2.5 w-2.5 flex-none rounded-full bg-[#D99A46]" />
-          <span className="hidden font-mono text-[12px] uppercase tracking-widest text-[#D99A46] md:inline">
-            Control de Cambios
-          </span>
-        </Link>
-
-        {puedeVer && <Sidebar esAdmin={esAdmin} />}
-
-        <div className="mt-auto flex flex-col gap-2 border-t border-[#3A4237] pt-4">
-          <span className="hidden truncate text-[12.5px] text-[#A9AE9F] md:block" title={user.email}>
-            {user.email}
-          </span>
-          <span className="hidden font-mono text-[10.5px] uppercase tracking-widest text-[#7C8375] md:block">
-            {role.replace("_", " ")}
-          </span>
-        </div>
-      </aside>
+      <BarraLateral
+        colapsadoInicial={sidebarColapsado}
+        esAdmin={esAdmin}
+        puedeVer={puedeVer}
+        email={user.email}
+        role={role}
+      />
 
       {/* No pinta nada: escucha los movimientos y refresca lo que ya
           esta en pantalla, campanita incluida. */}

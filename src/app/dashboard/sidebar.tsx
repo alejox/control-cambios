@@ -99,7 +99,18 @@ function activa(e: Entrada, pathname: string) {
   return e.exacta ? pathname === e.href : pathname.startsWith(e.href);
 }
 
-export default function Sidebar({ esAdmin }: { esAdmin: boolean }) {
+/**
+ * `colapsado` lo manda la barra, no un breakpoint: con la barra angosta
+ * esto queda como riel de iconos, y con la barra ancha, como menu con
+ * texto. Antes la decision era `md:` y por eso el riel no se podia elegir.
+ */
+export default function Sidebar({
+  esAdmin,
+  colapsado,
+}: {
+  esAdmin: boolean;
+  colapsado: boolean;
+}) {
   const pathname = usePathname();
   const visibles = ENTRADAS.filter((e) => !e.soloAdmin || esAdmin);
 
@@ -113,17 +124,27 @@ export default function Sidebar({ esAdmin }: { esAdmin: boolean }) {
             href={e.href}
             aria-current={esta ? "page" : undefined}
             title={e.etiqueta}
-            className={`flex items-center justify-center gap-2.5 rounded-[10px] px-3 py-2 text-[13.5px] transition md:justify-start ${
+            className={`flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-[13.5px] transition ${
+              colapsado ? "justify-center" : "justify-start"
+            } ${
               esta
                 ? "bg-[#2a3127] font-medium text-[#F3F1EA]"
                 : "text-[#A9AE9F] hover:bg-[#252c22] hover:text-[#F3F1EA]"
             }`}
           >
-            <span className={esta ? "text-[#D99A46]" : "text-[#7C8375]"}>{e.icono}</span>
-            {/* En pantallas chicas la barra queda como riel de iconos: el
-                title y el aria-label siguen nombrando cada opcion. */}
-            <span className="hidden md:inline">{e.etiqueta}</span>
-            <span className="sr-only md:hidden">{e.etiqueta}</span>
+            <span className={`flex-none ${esta ? "text-[#D99A46]" : "text-[#7C8375]"}`}>
+              {e.icono}
+            </span>
+            {/* Colapsada, la etiqueta no se oculta con CSS: se saca del
+                layout y queda solo para lectores de pantalla. Un `hidden`
+                sigue reservando el hueco del texto mientras la barra se
+                encoge, y se ve el atropello. El title nombra la opcion
+                para quien usa el mouse. */}
+            {colapsado ? (
+              <span className="sr-only">{e.etiqueta}</span>
+            ) : (
+              <span className="truncate">{e.etiqueta}</span>
+            )}
           </Link>
         );
       })}
