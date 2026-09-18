@@ -1,7 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <rect width="64" height="64" rx="14" fill="#1b2019"/>
-  <g transform="translate(6.4 6.4) scale(0.8)">
-    <path d="M4 30 A24 24 0 0 1 52 30 Z" fill="#D99A46"/>
-    <path d="M12 34 A24 24 0 0 0 60 34 Z" fill="#3E9B84"/>
-  </g>
+  <!--
+    Sin fondo: la marca se recorta sola contra la pestaña, sea del color
+    que sea. Por eso los colores se adaptan en vez de fijarse: un SVG de
+    favicon sí atiende prefers-color-scheme, y es la única pieza de la
+    identidad que puede hacerlo (un .ico es mapa de bits y no se entera).
+
+    Los dos juegos son los mismos de src/app/marca.tsx: sobre oscuro el
+    teal de marca se apaga, así que va el mismo color con más luz.
+  -->
+  <style>
+    .arriba { fill: #b8792a }
+    .abajo { fill: #2f7f6c }
+    @media (prefers-color-scheme: dark) {
+      .arriba { fill: #D99A46 }
+      .abajo { fill: #3E9B84 }
+    }
+  </style>
+  <path class="arriba" d="M4 30 A24 24 0 0 1 52 30 Z"/>
+  <path class="abajo" d="M12 34 A24 24 0 0 0 60 34 Z"/>
 </svg>
