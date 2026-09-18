@@ -114,19 +114,18 @@ function Tarjeta({ panel }: { panel: Panel }) {
 }
 
 /**
- * Un dato con su botón de copiar. Si es secreto, no se muestra nunca.
+ * Un dato con su botón de copiar. Si es secreto, arranca tapado y hay un
+ * botón para mostrarlo.
  *
- * No hay botón de revelar a pedido del usuario, y el razonamiento es
- * bueno: copiar resuelve el 100% de los casos reales —- la clave va del
- * portapapeles al panel del proveedor, sin pasar por la pantalla -— y un
- * botón de mostrar solo existe para que alguien lo apriete en el peor
- * momento, con otra persona al lado.
+ * Copiar sigue siendo el camino principal —- la clave va del portapapeles
+ * al panel del proveedor sin pasar por la pantalla -— pero hay casos donde
+ * la clave hay que leerla: dictarla, tipearla en otro aparato, o comparar
+ * si la que está guardada es la que todavía sirve.
  *
- * La única vez que la clave aparece es si el portapapeles falla. No es
- * una puerta de atrás: sin https o sin permiso no hay forma de copiar, y
- * entre revelarla para que se pueda seleccionar a mano o dejar un botón
- * que no hace nada y no dice por qué, lo segundo es peor. En el dominio
- * de la app, sobre https, esto no pasa nunca.
+ * Por eso el estado arranca en tapado y vuelve solo: a los 20 segundos se
+ * cierra de nuevo, para que una clave no quede a la vista en una pantalla
+ * que alguien dejó abierta. Si el portapapeles falla, se revela también,
+ * con el aviso de seleccionarla a mano.
  */
 function Campo({
   etiqueta,
@@ -137,7 +136,8 @@ function Campo({
   valor: string;
   secreto?: boolean;
 }) {
-  const [reveladaPorFallo, setReveladaPorFallo] = useState(false);
+  const [revelado, setRevelado] = useState(false);
+  const [falloAlCopiar, setFalloAlCopiar] = useState(false);
   const [copiado, setCopiado] = useState(false);
 
   useEffect(() => {
@@ -146,12 +146,21 @@ function Campo({
     return () => clearTimeout(t);
   }, [copiado]);
 
+  // Se vuelve a tapar sola: una clave revelada no se queda a la vista
+  // porque alguien se olvidó de apretar "Ocultar".
+  useEffect(() => {
+    if (!secreto || !revelado) return;
+    const t = setTimeout(() => setRevelado(false), 20000);
+    return () => clearTimeout(t);
+  }, [secreto, revelado]);
+
   async function copiar() {
     try {
       await navigator.clipboard.writeText(valor);
       setCopiado(true);
     } catch {
-      setReveladaPorFallo(true);
+      setFalloAlCopiar(true);
+      setRevelado(true);
     }
   }
 
@@ -159,12 +168,22 @@ function Campo({
     <div className="flex flex-wrap items-center gap-2">
       <span className={`${ETIQUETA} w-16 flex-none`}>{etiqueta}</span>
       <span className="min-w-0 flex-1 break-all font-mono text-[13px] text-ink">
-        {secreto && !reveladaPorFallo ? "••••••••••" : valor}
+        {secreto && !revelado ? "••••••••••" : valor}
       </span>
-      {reveladaPorFallo && (
+      {falloAlCopiar && (
         <span className="text-[11.5px] text-ink-soft">
           No pude copiar: seleccionala a mano.
         </span>
+      )}
+      {secreto && (
+        <button
+          type="button"
+          onClick={() => setRevelado((p) => !p)}
+          aria-pressed={revelado}
+          className={`${BOTON_SUAVE} px-2.5 text-[12px]`}
+        >
+          {revelado ? "Ocultar" : "Mostrar"}
+        </button>
       )}
       <button
         type="button"
