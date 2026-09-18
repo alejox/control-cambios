@@ -133,8 +133,14 @@ export default async function DashboardPage() {
               de verificar a quien le toca. */}
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-[0.8fr_1fr_1fr_1.2fr]">
             <div className="rounded-2xl border border-border bg-surface p-6 shadow-sm">
+              {/* "Movimientos" a secas, y no "pendientes": el bloque entero
+                  ya va sobre lo que no esta liquidado, asi que la palabra
+                  sobra arriba —- y peor, choca con el "sin aprobar" de
+                  abajo. Son dos cosas distintas (165 sin liquidar, 11 sin
+                  aprobar) y con las dos etiquetas juntas se leen como la
+                  misma, dejando la duda de por que los numeros no dan. */}
               <p className="mb-1.5 font-mono text-[11px] uppercase tracking-widest text-ink-soft">
-                Movimientos pendientes
+                Movimientos
               </p>
               <p className="text-2xl font-medium text-ink" style={{ fontFamily: "var(--font-display)" }}>
                 {totalItems}
