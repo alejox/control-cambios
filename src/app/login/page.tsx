@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import SesionEnFragmento from "./sesion-en-fragmento";
+import Marca from "../marca";
 
 /**
  * Solo inicio de sesión. Las cuentas se crean a mano desde Supabase:
@@ -55,7 +56,7 @@ export default function LoginPage() {
 
         <div className="relative">
           <div className="mb-14 flex items-center gap-2.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-[#D99A46]" />
+            <Marca tamano={24} className="flex-none" />
             <span className="font-mono text-[12.5px] uppercase tracking-widest text-[#D99A46]">
               Control de Cambios
             </span>

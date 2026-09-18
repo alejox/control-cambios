@@ -8,6 +8,7 @@ import {
   COOKIE_SIDEBAR_NO,
   COOKIE_SIDEBAR_SI,
 } from "@/lib/sidebar";
+import Marca from "../marca";
 import Sidebar from "./sidebar";
 
 /**
@@ -95,7 +96,7 @@ export default function BarraLateral({
         className={`flex items-center gap-2.5 ${colapsado ? "justify-center" : "justify-start"}`}
         title="Control de Cambios"
       >
-        <span className="h-2.5 w-2.5 flex-none rounded-full bg-[#D99A46]" />
+        <Marca tamano={22} className="flex-none" />
         {!colapsado && (
           <span className="truncate font-mono text-[12px] uppercase tracking-widest text-[#D99A46]">
             Control de Cambios
