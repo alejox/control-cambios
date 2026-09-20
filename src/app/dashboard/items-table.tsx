@@ -331,15 +331,237 @@ export default function ItemsTable({
       </div>
       )}
 
-      {/* El contenedor de afuera usa overflow-hidden por las esquinas
-          redondeadas, asi que en pantallas angostas RECORTA en vez de
-          desplazar. El min-w fuerza el scroll horizontal antes de que las
-          columnas se aplasten. */}
-      <div className="overflow-x-auto">
-      {/* El minimo de 1000px vale de md para arriba. Abajo la tabla entra
-          sola porque tres columnas se esconden, y arrastrar mil pixeles
-          de lado para leer una fila era justamente el problema. */}
-      <table className="w-full text-left text-[13.5px] md:min-w-[1000px]">
+      {/* Hasta 2xl se prioriza lectura vertical: desde md el sidebar resta
+          240 px al canal, así que un viewport "desktop" todavía no alcanza
+          para las doce columnas sin desplazamiento lateral. */}
+      <div className="divide-y divide-border 2xl:hidden">
+        {visibles.length === 0 && (
+          <p className="px-5 py-10 text-center text-[14px] text-ink-soft">
+            Ningún movimiento coincide con el filtro.
+          </p>
+        )}
+
+        {visibles.map((item) => {
+          const filas = porItem.get(item.id) ?? [];
+          const conComprobante = filas.filter(tieneComprobante);
+          const totalOrigen = filas.reduce((acc, d) => acc + Number(d.valor_origen), 0);
+          const referencias = filas.map((d) => d.referencia).filter(Boolean) as string[];
+          const usdtDe = (d: DepositoFila) =>
+            d.usdt !== null
+              ? Number(d.usdt)
+              : totalOrigen > 0
+                ? Math.round((Number(item.usdt_total) * Number(d.valor_origen) * 100) / totalOrigen) / 100
+                : 0;
+          const comisiones = repartir(Number(item.comision), filas.map(usdtDe));
+          const coincidePorRef =
+            refBuscada !== "" &&
+            filas.some((d) => normalizar(d.referencia).includes(refBuscada));
+          const expandida = abierto === item.id || coincidePorRef;
+
+          return (
+            <article key={item.id} className="p-4 sm:p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-[12px] text-ink-soft">
+                      #{item.numero}
+                    </span>
+                    <span
+                      className={`whitespace-nowrap rounded-full px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-wide ${
+                        item.tipo_flujo === "bs_a_usdt"
+                          ? "bg-accent-soft text-[#8f5e1f]"
+                          : "bg-teal-soft text-[#215d4d]"
+                      }`}
+                    >
+                      {ETIQUETA_FLUJO[item.tipo_flujo]}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[13px] text-ink-soft">
+                    {formatFecha(item.fecha)}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="font-medium text-ink">
+                    {formatMonto(item.usdt_total, "USDT")}
+                  </p>
+                  <p className="mt-1">
+                    {item.revisado_at === null ? (
+                      <span className={`whitespace-nowrap rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide ${
+                        item.desaprobado_at !== null
+                          ? "bg-critical-soft text-critical"
+                          : "bg-accent-soft text-[#8f5e1f]"
+                      }`}>
+                        {item.desaprobado_at !== null ? "Devuelto" : "En revisión"}
+                      </span>
+                    ) : (
+                      <span className="whitespace-nowrap rounded-full bg-teal-soft px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-[#215d4d]">
+                        Aprobado
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-[13px]">
+                <div>
+                  <dt className="text-[11px] text-ink-soft">Recibido</dt>
+                  <dd className="mt-0.5 text-ink">
+                    {formatMonto(totalOrigen, item.moneda_origen)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] text-ink-soft">Comprobantes</dt>
+                  <dd className="mt-0.5">
+                    {conComprobante.length === 0 ? (
+                      <span className="text-ink-soft">Sin comprobante</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          conComprobante.length === 1
+                            ? abrirComprobante(conComprobante[0])
+                            : setAbierto(expandida ? null : item.id)
+                        }
+                        className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-accent transition hover:bg-surface-alt"
+                      >
+                        {IconoDocumento}
+                        {conComprobante.length === 1
+                          ? "Ver comprobante"
+                          : `Ver ${conComprobante.length} comprobantes`}
+                      </button>
+                    )}
+                  </dd>
+                </div>
+              </dl>
+
+              <button
+                type="button"
+                onClick={() => setAbierto(expandida ? null : item.id)}
+                aria-expanded={expandida}
+                className="mt-4 flex min-h-9 w-full items-center justify-between rounded-lg bg-surface-alt px-3 text-left text-[13px] font-medium text-ink"
+              >
+                <span>{expandida ? "Ocultar datos" : "Ver datos y depósitos"}</span>
+                <span className={`text-[10px] transition-transform ${expandida ? "rotate-180" : ""}`}>
+                  ▼
+                </span>
+              </button>
+
+              {expandida && (
+                <div className="mt-3 rounded-xl border border-border bg-surface-alt/40 p-3">
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-[12.5px]">
+                    <div>
+                      <dt className="text-[11px] text-ink-soft">Tasa</dt>
+                      <dd className="mt-0.5 text-ink">
+                        {item.tasa ? formatMonto(item.tasa, item.moneda_origen) : "—"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-[11px] text-ink-soft">Comisión</dt>
+                      <dd className="mt-0.5 text-ink">
+                        {formatMonto(item.comision, "USDT")}
+                      </dd>
+                    </div>
+                    <div className="col-span-2">
+                      <dt className="text-[11px] text-ink-soft">Referencia</dt>
+                      <dd className="mt-0.5 break-words font-mono text-[12px] text-ink">
+                        {referencias.length === 0 ? "Sin referencia" : referencias.join(" · ")}
+                      </dd>
+                    </div>
+                  </dl>
+
+                  {esAdmin && item.liquidacion_id === null && (
+                    <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border pt-3">
+                      <Link
+                        href={`/dashboard/items/${item.id}/edit`}
+                        className="text-[13px] text-accent hover:underline"
+                      >
+                        Editar
+                      </Link>
+                      {item.revisado_at !== null && (
+                        <DesaprobarItem
+                          itemId={item.id}
+                          numero={item.numero}
+                          tipoFlujo={item.tipo_flujo}
+                          usdtTotal={Number(item.usdt_total)}
+                        />
+                      )}
+                      <DeleteButton itemId={item.id} numero={item.numero} />
+                    </div>
+                  )}
+
+                  {filas.length > 0 && (
+                    <div className="mt-4 space-y-2 border-t border-border pt-3">
+                      <p className="font-mono text-[10px] uppercase tracking-widest text-ink-soft">
+                        Depósitos
+                      </p>
+                      {filas.map((d, i) => (
+                        <div
+                          key={d.id}
+                          className={`rounded-lg border p-3 ${
+                            depositoCoincide(d)
+                              ? "border-accent bg-accent-soft/50"
+                              : "border-border bg-surface"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-[12px] text-ink-soft">{formatFecha(d.fecha)}</p>
+                              <p className="mt-0.5 break-words font-mono text-[12px] text-ink">
+                                {d.referencia ?? "Sin referencia"}
+                              </p>
+                            </div>
+                            <span className={`whitespace-nowrap rounded-full px-2 py-0.5 font-mono text-[9.5px] uppercase tracking-wide ${
+                              d.aprobado_at === null
+                                ? "bg-accent-soft text-[#8f5e1f]"
+                                : "bg-teal-soft text-[#215d4d]"
+                            }`}>
+                              {d.aprobado_at === null ? "Pendiente" : "Aprobado"}
+                            </span>
+                          </div>
+                          <dl className="mt-3 grid grid-cols-3 gap-2 text-[12px]">
+                            <div>
+                              <dt className="text-[10px] text-ink-soft">Recibido</dt>
+                              <dd className="mt-0.5 text-ink">{formatMonto(d.valor_origen, item.moneda_origen)}</dd>
+                            </div>
+                            <div>
+                              <dt className="text-[10px] text-ink-soft">USDT</dt>
+                              <dd className="mt-0.5 text-ink">
+                                {formatMonto(usdtDe(d), "USDT")}{d.usdt === null ? "*" : ""}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt className="text-[10px] text-ink-soft">Comisión</dt>
+                              <dd className="mt-0.5 text-ink">{formatMonto(comisiones[i] ?? 0, "USDT")}</dd>
+                            </div>
+                          </dl>
+                          <div className="mt-3">
+                            {tieneComprobante(d) ? (
+                              <button
+                                type="button"
+                                onClick={() => abrirComprobante(d)}
+                                className="min-h-8 text-[12.5px] text-accent hover:underline"
+                              >
+                                {d.comprobante_path ? "Ver comprobante" : "Ver texto"}
+                              </button>
+                            ) : (
+                              <span className="text-[12px] text-ink-soft">Sin comprobante</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </article>
+          );
+        })}
+      </div>
+
+      {/* La tabla semántica se conserva cuando el canal útil sí supera sus
+          1000 px; no se usa scroll horizontal como modo principal. */}
+      <div className="hidden 2xl:block">
+      <table className="w-full min-w-[1000px] text-left text-[13.5px]">
         <thead>
           <tr className="border-b border-border bg-surface-alt/60 text-[11px] uppercase tracking-wide text-ink-soft">
             <th className="px-5 py-3 font-medium">#</th>

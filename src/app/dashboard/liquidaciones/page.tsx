@@ -49,6 +49,11 @@ export default async function LiquidacionesPage() {
             desde el panel, la liquidación aparece acá.
           </div>
         ) : (
+          <>
+          {/* La tabla necesita cerca de 1000 px reales. En `md` ya existe
+              un sidebar de 240 px, por eso el corte se hace en `xl` y no
+              siguiendo solamente el ancho del viewport. */}
+          <div className="hidden xl:block">
           <table className="w-full text-left text-[13.5px]">
             <thead>
               <tr className="border-b border-border bg-surface-alt/60 text-[11px] uppercase tracking-wide text-ink-soft">
@@ -97,6 +102,65 @@ export default async function LiquidacionesPage() {
               ))}
             </tbody>
           </table>
+          </div>
+
+          <div className="divide-y divide-border xl:hidden">
+            {liquidaciones.map((l) => {
+              const cobra = cobraCadaLado(l);
+              const favor = favorDe(l.total_neto);
+
+              return (
+                <article key={l.id} className="p-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="font-mono text-[11px] uppercase tracking-widest text-ink-soft">
+                        Liquidación #{l.numero}
+                      </p>
+                      <p className="mt-1 text-[14px] text-ink">
+                        {formatFecha(l.fecha)} · {l.cantidad_items} movimiento
+                        {l.cantidad_items === 1 ? "" : "s"}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-medium text-ink">
+                        {formatMonto(favor.monto, "USDT")}
+                      </p>
+                      <p className="font-mono text-[10.5px] uppercase tracking-wide text-ink-soft">
+                        {favor.lado === "bs"
+                          ? "a favor Bs"
+                          : favor.lado === "cop"
+                            ? "a favor COP"
+                            : "parejo"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <dl className="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-surface-alt/60 p-3 text-[13px]">
+                    <div>
+                      <dt className="text-[11px] text-ink-soft">Cobra lado Bs</dt>
+                      <dd className="mt-0.5 font-medium text-teal">
+                        {formatMonto(cobra.bs, "USDT")}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-[11px] text-ink-soft">Cobra lado COP</dt>
+                      <dd className="mt-0.5 font-medium text-teal">
+                        {formatMonto(cobra.cop, "USDT")}
+                      </dd>
+                    </div>
+                  </dl>
+
+                  <Link
+                    href={`/dashboard/liquidaciones/${l.id}`}
+                    className="mt-4 inline-flex min-h-9 items-center rounded-lg border border-border px-3 text-[13px] font-medium text-accent transition hover:bg-surface-alt"
+                  >
+                    Ver detalle
+                  </Link>
+                </article>
+              );
+            })}
+          </div>
+          </>
         )}
       </div>
     </div>
