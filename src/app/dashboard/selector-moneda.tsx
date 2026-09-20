@@ -24,41 +24,50 @@ export default function SelectorMoneda({ valor }: { valor: Moneda }) {
   // escritura falla se vuelve al valor real y se avisa.
   const [elegida, setElegida] = useState<Moneda>(valor);
   const [error, setError] = useState(false);
+  const [guardando, setGuardando] = useState(false);
 
   async function cambiar(moneda: Moneda) {
-    if (moneda === elegida) return;
+    if (moneda === elegida || guardando || pendiente) return;
 
     const anterior = elegida;
     setElegida(moneda);
     setError(false);
+    setGuardando(true);
 
-    const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    try {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-    if (!user) {
+      if (!user) {
+        setElegida(anterior);
+        setError(true);
+        return;
+      }
+
+      const { error: errorGuardado } = await supabase
+        .from("preferencias_usuario")
+        .upsert(
+          { user_id: user.id, moneda, updated_at: new Date().toISOString() },
+          { onConflict: "user_id" },
+        );
+
+      if (errorGuardado) {
+        setElegida(anterior);
+        setError(true);
+        return;
+      }
+
+      // El formulario y los totales se arman en el servidor: hay que pedirle
+      // que se vuelva a renderizar con la moneda nueva.
+      startTransition(() => router.refresh());
+    } catch {
       setElegida(anterior);
       setError(true);
-      return;
+    } finally {
+      setGuardando(false);
     }
-
-    const { error: errorGuardado } = await supabase
-      .from("preferencias_usuario")
-      .upsert(
-        { user_id: user.id, moneda, updated_at: new Date().toISOString() },
-        { onConflict: "user_id" },
-      );
-
-    if (errorGuardado) {
-      setElegida(anterior);
-      setError(true);
-      return;
-    }
-
-    // El formulario y los totales se arman en el servidor: hay que pedirle
-    // que se vuelva a renderizar con la moneda nueva.
-    startTransition(() => router.refresh());
   }
 
   return (
@@ -70,6 +79,7 @@ export default function SelectorMoneda({ valor }: { valor: Moneda }) {
         className="flex items-center gap-0.5 rounded-[9px] border border-border bg-surface-alt/60 p-0.5"
         role="group"
         aria-label="Moneda de mis cierres"
+        aria-busy={guardando || pendiente}
       >
         {OPCIONES.map((o) => {
           const activa = elegida === o.moneda;
@@ -79,7 +89,7 @@ export default function SelectorMoneda({ valor }: { valor: Moneda }) {
               type="button"
               title={o.titulo}
               aria-pressed={activa}
-              disabled={pendiente}
+              disabled={guardando || pendiente}
               onClick={() => void cambiar(o.moneda)}
               className={`rounded-[7px] px-2.5 py-1 font-mono text-[11px] uppercase tracking-wide transition disabled:opacity-60 ${
                 activa
