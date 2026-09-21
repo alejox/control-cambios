@@ -316,42 +316,59 @@ export async function respaldarPendientes(opciones: {
 }) {
   const { panelId, nombrePanel, cuentas } = opciones;
 
-  const resultados = await Promise.allSettled(
-    cuentas.map(async (cuenta) => {
-      if (!cuenta.clave || cuenta.secret_id) return cuenta;
+  let creados = 0;
+  let fallidos = 0;
+  const finales: CuentaGuardada[] = [];
+
+  // DE A UNA, no en paralelo.
+  //
+  // Antes iban todas juntas con Promise.allSettled y la primera corrida real
+  // respaldó 5 de 7: dos altas fallaron y el segundo intento, sin cambiar
+  // nada, las completó. Nunca vimos el error —- se perdió la captura de los
+  // logs -— así que la causa no está confirmada; lo único que sabemos es que
+  // fue transitorio y que había hasta tres altas simultáneas por panel.
+  //
+  // Serializar acá no cuesta nada: esto es un trabajo por lotes que se corre
+  // una vez, donde tardar unos segundos más da igual, y elimina la
+  // concurrencia como sospechosa. Si el problema vuelve a aparecer con las
+  // llamadas de a una, la causa era otra y el log lo va a decir.
+  //
+  // El guardado de un panel SÍ sigue en paralelo: ahí hay alguien mirando la
+  // pantalla y son dos o tres cuentas, no todas las del usuario.
+  for (const cuenta of cuentas) {
+    if (!cuenta.clave || cuenta.secret_id) {
+      finales.push(cuenta);
+      continue;
+    }
+
+    try {
       const secret_id = await crearSecreto({
         panelId,
         nombrePanel,
         usuario: cuenta.usuario,
         clave: cuenta.clave,
       });
+      creados += 1;
       // La misma regla que al guardar un panel: el texto se retira solo
       // cuando el secreto que lo reemplaza quedó confirmado recién ahora.
       // Tener dos reglas distintas para lo mismo dejaría filas con texto y
       // filas sin él según por qué camino pasaron.
-      return {
+      finales.push({
         usuario: cuenta.usuario,
         clave: textoPlanoRetirado() ? "" : cuenta.clave,
         secret_id,
-      };
-    }),
-  );
-
-  let creados = 0;
-  let fallidos = 0;
-
-  const finales = resultados.map((resultado, i): CuentaGuardada => {
-    if (resultado.status === "rejected") {
+      });
+    } catch (error) {
       fallidos += 1;
       console.error(
         "[migración] no se pudo respaldar una clave:",
-        mensajeDeError(resultado.reason),
+        mensajeDeError(error),
       );
-      return cuentas[i];
+      // Se sigue con las demás. Que una cuenta no entre no es motivo para
+      // dejar sin respaldo a las que sí pueden.
+      finales.push(cuenta);
     }
-    if (resultado.value.secret_id !== cuentas[i].secret_id) creados += 1;
-    return resultado.value;
-  });
+  }
 
   return { cuentas: finales, creados, fallidos };
 }

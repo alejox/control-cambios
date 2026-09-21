@@ -430,3 +430,96 @@ test("the screen counters tell apart what is unbacked from what still has text",
 
   assert.deepEqual(conteo, { pendientes: 1, conTextoPlano: 1 });
 });
+
+// ---------------------------------------------------------------
+// Concurrencia y reintentos
+// ---------------------------------------------------------------
+
+test("the bulk migration talks to the manager one account at a time", async () => {
+  reiniciar();
+  const cuentas = ["a", "b", "c", "d", "e"].map((v) => ({ usuario: v, clave: v }));
+
+  const r = await respaldarPendientes({ ...PANEL, cuentas });
+
+  assert.equal(r.creados, 5);
+  assert.equal(
+    falso.almacen.maxSimultaneas,
+    1,
+    `hubo ${falso.almacen.maxSimultaneas} altas a la vez; la migración masiva debe ir de a una`,
+  );
+});
+
+test("saving a panel still writes its accounts in parallel", async () => {
+  reiniciar();
+  const cuentas = ["a", "b", "c"].map((v) => entrante(v, v));
+
+  await sincronizarCuentas({ ...PANEL, cuentas, permitidos: [], previos: [] });
+
+  // Acá hay alguien esperando frente a la pantalla y son dos o tres cuentas:
+  // serializar sumaría un viaje de red por cada una a la espera del usuario.
+  assert.ok(
+    falso.almacen.maxSimultaneas > 1,
+    "el guardado dejó de ser paralelo sin que nadie lo pidiera",
+  );
+});
+
+test("a rate limit is waited out, not surfaced as a failure", async () => {
+  reiniciar();
+  // El servidor rechaza la primera y acepta la segunda.
+  falso.almacen.fallarVeces.set("create", {
+    veces: 1,
+    error: new Error("Received error message from server: [429 Too Many Requests] {}"),
+  });
+
+  const r = await respaldarPendientes({
+    ...PANEL,
+    cuentas: [{ usuario: "ana", clave: "la-clave" }],
+  });
+
+  assert.equal(r.fallidos, 0, "un 429 no debería llegar al usuario como fallo");
+  assert.equal(r.creados, 1);
+  assert.equal(falso.almacen.secretos.size, 1, "el reintento duplicó el secreto");
+});
+
+test("an ambiguous error is never retried, so no secret is duplicated", async () => {
+  reiniciar();
+  // Un timeout puede ser una petición que SÍ creó el secreto y cuya respuesta
+  // se perdió. Reintentar eso deja dos secretos y la fila apuntando a uno.
+  falso.almacen.fallarVeces.set("create", {
+    veces: 1,
+    error: new Error("socket hang up"),
+  });
+
+  const r = await respaldarPendientes({
+    ...PANEL,
+    cuentas: [{ usuario: "ana", clave: "la-clave" }],
+  });
+
+  assert.equal(r.fallidos, 1);
+  assert.equal(r.creados, 0);
+  assert.equal(r.cuentas[0].clave, "la-clave", "perdió la clave de la cuenta que falló");
+  assert.equal(r.cuentas[0].secret_id, undefined);
+  // Solo un intento: el camino idempotente es que el usuario vuelva a apretar.
+  const altas = falso.almacen.llamadas.filter((l) => l.metodo === "create").length;
+  assert.equal(altas, 1, `hubo ${altas} intentos de alta para un error ambiguo`);
+});
+
+test("one account failing does not stop the rest of the migration", async () => {
+  reiniciar();
+  falso.almacen.fallarVeces.set("create", { veces: 1, error: new Error("socket hang up") });
+
+  const r = await respaldarPendientes({
+    ...PANEL,
+    cuentas: [
+      { usuario: "ana", clave: "a" },
+      { usuario: "beto", clave: "b" },
+      { usuario: "caro", clave: "c" },
+    ],
+  });
+
+  assert.equal(r.fallidos, 1);
+  assert.equal(r.creados, 2, "abandonó las cuentas que venían después de la que falló");
+  assert.equal(r.cuentas[0].secret_id, undefined);
+  assert.ok(r.cuentas[1].secret_id);
+  assert.ok(r.cuentas[2].secret_id);
+});

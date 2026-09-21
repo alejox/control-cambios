@@ -203,6 +203,33 @@ export async function leerSecretos(ids: string[]): Promise<Map<string, string>> 
   return valores;
 }
 
+/**
+ * Reintenta SOLO cuando el servidor contestó 429.
+ *
+ * La distinción no es un detalle: un 429 significa que la petición fue
+ * rechazada y no llegó a ejecutarse, así que repetirla no puede duplicar
+ * nada. Cualquier otro error es ambiguo —- un timeout puede ser una petición
+ * que sí creó el secreto y cuya respuesta se perdió -— y reintentar eso deja
+ * dos secretos donde tenía que haber uno, con la fila apuntando a uno solo y
+ * el otro colgado para siempre.
+ *
+ * Por eso no hay un reintento genérico acá. Cuando el error es de los
+ * ambiguos, la operación falla, la clave se conserva en la base y el usuario
+ * vuelve a apretar el botón: ese camino SÍ es idempotente, porque
+ * `respaldarPendientes` solo crea lo que falta.
+ */
+async function conEsperaSiLimitan<T>(operacion: () => Promise<T>, intentos = 3) {
+  for (let intento = 1; ; intento += 1) {
+    try {
+      return await operacion();
+    } catch (error) {
+      const limitado = /\b429\b|too many requests/i.test(mensajeDeError(error));
+      if (!limitado || intento >= intentos) throw error;
+      await new Promise((listo) => setTimeout(listo, 300 * 2 ** (intento - 1)));
+    }
+  }
+}
+
 /** Crea el secreto de una cuenta y devuelve su id. */
 export async function crearSecreto(opciones: {
   panelId: string;
@@ -212,15 +239,17 @@ export async function crearSecreto(opciones: {
 }) {
   const { organizationId, projectId } = configuracion();
   const sdk = await cliente();
-  const secreto = await sdk
-    .secrets()
-    .create(
-      organizationId,
-      etiqueta(opciones.nombrePanel, opciones.usuario),
-      opciones.clave,
-      nota(opciones.panelId, opciones.usuario),
-      [projectId],
-    );
+  const secreto = await conEsperaSiLimitan(() =>
+    sdk
+      .secrets()
+      .create(
+        organizationId,
+        etiqueta(opciones.nombrePanel, opciones.usuario),
+        opciones.clave,
+        nota(opciones.panelId, opciones.usuario),
+        [projectId],
+      ),
+  );
   return secreto.id;
 }
 
@@ -234,16 +263,18 @@ export async function actualizarSecreto(opciones: {
 }) {
   const { organizationId, projectId } = configuracion();
   const sdk = await cliente();
-  await sdk
-    .secrets()
-    .update(
-      organizationId,
-      opciones.secretId,
-      etiqueta(opciones.nombrePanel, opciones.usuario),
-      opciones.clave,
-      nota(opciones.panelId, opciones.usuario),
-      [projectId],
-    );
+  await conEsperaSiLimitan(() =>
+    sdk
+      .secrets()
+      .update(
+        organizationId,
+        opciones.secretId,
+        etiqueta(opciones.nombrePanel, opciones.usuario),
+        opciones.clave,
+        nota(opciones.panelId, opciones.usuario),
+        [projectId],
+      ),
+  );
 }
 
 /**

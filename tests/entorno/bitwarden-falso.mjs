@@ -13,6 +13,11 @@ export const almacen = {
   /** Cada llamada que recibió, para poder afirmar sobre lotes vs. de a uno. */
   llamadas: [],
   siguienteId: 0,
+  /** Método -> { veces, error }: falla las primeras N veces y después anda. */
+  fallarVeces: new Map(),
+  /** Cuántas llamadas hay corriendo ahora y cuántas llegó a haber a la vez. */
+  enVuelo: 0,
+  maxSimultaneas: 0,
 };
 
 export function reiniciar() {
@@ -20,6 +25,9 @@ export function reiniciar() {
   almacen.fallar = new Map();
   almacen.llamadas = [];
   almacen.siguienteId = 0;
+  almacen.fallarVeces = new Map();
+  almacen.enVuelo = 0;
+  almacen.maxSimultaneas = 0;
 }
 
 /** Siembra un secreto sin pasar por la app, como si ya existiera. */
@@ -45,8 +53,37 @@ function nuevoId() {
 
 function registrar(metodo, argumentos) {
   almacen.llamadas.push({ metodo, argumentos });
+
+  const programado = almacen.fallarVeces.get(metodo);
+  if (programado && programado.veces > 0) {
+    programado.veces -= 1;
+    throw programado.error instanceof Error
+      ? programado.error
+      : new Error(String(programado.error));
+  }
+
   const error = almacen.fallar.get(metodo);
   if (error) throw error instanceof Error ? error : new Error(String(error));
+}
+
+/**
+ * Envuelve cada método para contar cuántos corren a la vez.
+ *
+ * Es lo único que permite distinguir "las llamadas van de a una" de "van
+ * todas juntas y justo salieron en orden": mirar la lista de llamadas no
+ * alcanza, porque el orden de llegada puede coincidir por casualidad.
+ */
+async function midiendoConcurrencia(fn) {
+  almacen.enVuelo += 1;
+  almacen.maxSimultaneas = Math.max(almacen.maxSimultaneas, almacen.enVuelo);
+  try {
+    // Un tick de espera: sin él todo se resolvería sincrónicamente y el
+    // contador nunca vería dos llamadas superpuestas ni aunque las hubiera.
+    await new Promise((listo) => setTimeout(listo, 5));
+    return await fn();
+  } finally {
+    almacen.enVuelo -= 1;
+  }
 }
 
 class SecretsClient {
@@ -69,6 +106,7 @@ class SecretsClient {
   }
 
   async create(organizationId, key, value, note, projectIds) {
+    return midiendoConcurrencia(async () => {
     registrar("create", [organizationId, key, value, note, projectIds]);
     const secreto = {
       id: nuevoId(),
@@ -82,9 +120,11 @@ class SecretsClient {
     };
     almacen.secretos.set(secreto.id, secreto);
     return secreto;
+    });
   }
 
   async update(organizationId, id, key, value, note, projectIds) {
+    return midiendoConcurrencia(async () => {
     registrar("update", [organizationId, id, key, value, note, projectIds]);
     const previo = almacen.secretos.get(id);
     if (!previo) throw new Error(`404: no existe el secreto ${id}`);
@@ -98,6 +138,7 @@ class SecretsClient {
     };
     almacen.secretos.set(id, secreto);
     return secreto;
+    });
   }
 
   async list(organizationId) {

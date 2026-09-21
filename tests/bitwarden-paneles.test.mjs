@@ -162,7 +162,10 @@ test("the migration runs under the caller's own RLS, never service_role", () => 
 test("the migration only creates missing secrets and never returns values", () => {
   // Solo crea: una clave rotada a mano en Bitwarden no puede quedar
   // revertida al valor viejo de la base en la próxima pasada.
-  assert.match(puente, /if \(!cuenta\.clave \|\| cuenta\.secret_id\) return cuenta;/);
+  assert.match(
+    puente,
+    /if \(!cuenta\.clave \|\| cuenta\.secret_id\) \{\s*\n\s*finales\.push\(cuenta\);\s*\n\s*continue;/,
+  );
   assert.doesNotMatch(migrar, /actualizarSecreto/);
   // La respuesta lleva números y nombres de panel, nunca valores. Se mira
   // dentro de cada NextResponse.json y no en el archivo entero: la ruta sí
