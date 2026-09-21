@@ -101,6 +101,17 @@ function Tarjeta({ panel }: { panel: Panel }) {
           )}
           {cuenta.usuario && <Campo etiqueta="Usuario" valor={cuenta.usuario} />}
           {cuenta.clave && <Campo etiqueta="Clave" valor={cuenta.clave} secreto />}
+          {/* Tenía una clave respaldada y el gestor no la devolvió. Se dice
+              en vez de no mostrar nada: un hueco donde iba la clave se lee
+              como "esta cuenta no tiene", y la respuesta a eso sería
+              escribirla de nuevo, que es justo lo que no hay que hacer
+              mientras el gestor esté caído. */}
+          {cuenta.claveNoDisponible && (
+            <p className="text-[12.5px] leading-relaxed text-critical">
+              La clave está en el gestor de secretos y no pudimos leerla ahora.
+              Probá recargar en un momento; no la vuelvas a escribir todavía.
+            </p>
+          )}
         </div>
       ))}
 
@@ -209,9 +220,15 @@ function Formulario({
 
   // Cerrar en el render que trae ok: el servidor ya revalidó la ruta, así
   // que la tarjeta de atrás tiene los datos nuevos.
+  //
+  // Salvo que venga un aviso. Cerrar en ese caso haría desaparecer la única
+  // señal de que la clave quedó sin respaldo: el usuario vería el formulario
+  // cerrarse, que es exactamente lo que ve cuando sale todo bien, y se iría
+  // creyendo que el respaldo existe. El formulario se queda abierto con el
+  // aviso hasta que lo cierre a mano.
   useEffect(() => {
-    if (state.ok) alTerminar();
-  }, [state.ok, alTerminar]);
+    if (state.ok && !state.aviso) alTerminar();
+  }, [state.ok, state.aviso, alTerminar]);
 
   return (
     <form
@@ -246,11 +263,17 @@ function Formulario({
           {pending ? "Guardando…" : "Guardar"}
         </button>
         <button type="button" onClick={alTerminar} className={BOTON_SUAVE}>
-          Cancelar
+          {/* Después de un guardado exitoso, "Cancelar" se lee como
+              "deshacer lo que acabás de guardar". No lo deshace: solo
+              cierra. */}
+          {state.ok ? "Cerrar" : "Cancelar"}
         </button>
         {panel && <Eliminar panel={panel} />}
         {state.error && (
           <span className="text-[12.5px] text-critical">{state.error}</span>
+        )}
+        {state.aviso && (
+          <span className="text-[12.5px] text-ink-soft">{state.aviso}</span>
         )}
       </div>
     </form>
@@ -356,6 +379,25 @@ function Cuentas({ valores }: { valores?: Cuenta[] }) {
 
       {cuentas.map((cuenta, i) => (
         <div key={i} className="flex items-start gap-2">
+          {/* Va DENTRO de la fila, al lado de su usuario y su clave, porque
+              del otro lado los tres campos se emparejan por posición. Es lo
+              que permite borrar la cuenta 2 y que la 3 siga apuntando a SU
+              secreto en vez de al de la que se fue.
+
+              Que viaje al navegador y vuelva no lo convierte en una llave:
+              el servidor solo reutiliza un secret_id que ya figure en esa
+              fila de la base, así que mandar uno ajeno no da acceso a nada,
+              simplemente se ignora y la cuenta estrena secreto nuevo. */}
+          <input type="hidden" name="secret_id" value={cuenta.secret_id ?? ""} />
+          {/* Si el campo de al lado llegó con la clave adentro.
+              Va vacío solo cuando la cuenta tiene un secreto que el gestor
+              no devolvió: ahí el campo se ve en blanco sin que nadie lo
+              haya borrado, y guardar así no puede significar "borrala". */}
+          <input
+            type="hidden"
+            name="clave_legible"
+            value={cuenta.claveNoDisponible ? "" : "1"}
+          />
           <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row">
             <input
               name="usuario"
@@ -394,6 +436,16 @@ function Cuentas({ valores }: { valores?: Cuenta[] }) {
           )}
         </div>
       ))}
+
+      {/* Se avisa una sola vez, no por fila: repetirlo en cada cuenta
+          convierte una advertencia en ruido que se saltea. */}
+      {cuentas.some((c) => c.claveNoDisponible) && (
+        <p className="text-[12px] leading-relaxed text-critical">
+          Alguna clave no se pudo leer del gestor de secretos y su campo está
+          en blanco. Podés guardar igual —- no se va a borrar -— pero no
+          escribas una clave nueva ahí hasta poder ver la que hay.
+        </p>
+      )}
 
       <button
         type="button"
