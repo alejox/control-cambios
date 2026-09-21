@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fsSync from "node:fs";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
@@ -199,6 +200,12 @@ test("the plaintext retirement is documented but not executed", () => {
   // Y el archivo tiene que decir que el SQL de abajo NO verifica nada: es
   // justo la razón por la que el retiro lo hace la app.
   assert.match(fase49, /que NO verifica nada/);
+});
+
+test("the notice is hidden when there is not a single password to talk about", () => {
+  const pagina = fsSync.readFileSync("src/app/dashboard/paneles/page.tsx", "utf8");
+  assert.match(pagina, /gestorConfigurado && !error && conClave > 0 && \(/);
+  assert.match(puente, /if \(!cuenta\.clave && !cuenta\.secret_id\) continue;/);
 });
 
 test("the verification gate demands zero pending, zero unresolved, zero mismatched", () => {

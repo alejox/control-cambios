@@ -58,7 +58,7 @@ export default async function PanelesPage() {
   // visita a la pantalla, y sobre `paneles` ya no se podría distinguir una
   // clave que vino del gestor de una que sigue en texto en la base.
   const retirado = textoPlanoRetirado();
-  const { pendientes, conTextoPlano } = contarMigracion(data ?? []);
+  const { pendientes, conTextoPlano, conClave } = contarMigracion(data ?? []);
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:w-[90%] sm:px-6 sm:py-10">
@@ -106,7 +106,11 @@ export default async function PanelesPage() {
         </p>
       </div>
 
-      {gestorConfigurado && !error && (
+      {/* Sin una sola clave guardada no hay nada que respaldar ni que
+          verificar, y el aviso sería una afirmación sobre un conjunto
+          vacío. Una cuenta nueva no necesita que le digan que sus claves
+          —- que no tiene -— están a salvo. */}
+      {gestorConfigurado && !error && conClave > 0 && (
         <RespaldoBitwarden
           pendientes={pendientes}
           porRetirar={retirado ? conTextoPlano : 0}

@@ -528,14 +528,27 @@ export async function retirarTextoPlano(filas: FilaParaMigrar[]) {
 export function contarMigracion(filas: Array<{ cuentas: unknown }>) {
   let pendientes = 0;
   let conTextoPlano = 0;
+  let conClave = 0;
 
   for (const fila of filas) {
     for (const cuenta of normalizar(fila.cuentas)) {
+      // Una cuenta sin clave y sin referencia no tiene contraseña en ningún
+      // lado: es un usuario anotado y nada más.
+      if (!cuenta.clave && !cuenta.secret_id) continue;
+      conClave += 1;
+
+      // Sin texto en la base: ya se retiró y vive solo en el gestor.
       if (!cuenta.clave) continue;
+
       if (cuenta.secret_id) conTextoPlano += 1;
       else pendientes += 1;
     }
   }
 
-  return { pendientes, conTextoPlano };
+  // `conClave` es lo que distingue "no queda nada por hacer" de "no hay nada
+  // de qué hablar". Los dos dan pendientes 0 y conTextoPlano 0, y sin este
+  // tercer número la pantalla le dice "tus claves ya están respaldadas" a
+  // alguien que no tiene ninguna: una afirmación sobre un conjunto vacío,
+  // que además le ofrece verificarlo.
+  return { pendientes, conTextoPlano, conClave };
 }

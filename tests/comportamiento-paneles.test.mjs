@@ -428,7 +428,32 @@ test("the screen counters tell apart what is unbacked from what still has text",
     { cuentas: "basura-que-no-es-un-arreglo" },
   ]);
 
-  assert.deepEqual(conteo, { pendientes: 1, conTextoPlano: 1 });
+  assert.deepEqual(conteo, { pendientes: 1, conTextoPlano: 1, conClave: 3 });
+});
+
+test("an account with no passwords at all is told nothing", () => {
+  // Es el caso que apareció con el colaborador: cero paneles. Sin conClave,
+  // esto es indistinguible de "ya está todo respaldado", y la pantalla le
+  // afirma a alguien que sus claves —- que no tiene -— están a salvo.
+  assert.deepEqual(contarMigracion([]), {
+    pendientes: 0,
+    conTextoPlano: 0,
+    conClave: 0,
+  });
+
+  // Un panel con usuario anotado y sin contraseña tampoco cuenta: no hay
+  // nada que respaldar.
+  assert.deepEqual(
+    contarMigracion([{ cuentas: [{ usuario: "ana", clave: "" }] }]),
+    { pendientes: 0, conTextoPlano: 0, conClave: 0 },
+  );
+
+  // Pero una ya retirada SÍ: su clave existe, vive en el gestor.
+  assert.equal(
+    contarMigracion([{ cuentas: [{ usuario: "ana", clave: "", secret_id: "s1" }] }])
+      .conClave,
+    1,
+  );
 });
 
 // ---------------------------------------------------------------
