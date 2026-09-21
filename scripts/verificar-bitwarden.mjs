@@ -59,7 +59,7 @@ if (faltan.length > 0) {
 }
 
 const { estaConfigurado, textoPlanoRetirado, listPanelSecretMetadata, leerSecretos } =
-  await import("../src/lib/bitwarden-secrets.ts");
+  await import("@/lib/bitwarden-secrets");
 
 console.log("\nConfiguración");
 if (estaConfigurado()) bien("la app se considera configurada");
