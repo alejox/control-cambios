@@ -18,9 +18,22 @@ import path from "node:path";
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(AQUI, "../../src");
 
+/**
+ * El SDK se reemplaza solo si quien registra el loader lo pide.
+ *
+ * Los tests quieren el falso; el verificador de credenciales quiere el de
+ * verdad y el resto del arnés igual (alias y server-only). El dato viaja por
+ * `register(..., { data })` y no por una variable de entorno porque los
+ * hooks corren en otro hilo y no ven el process.env de acá.
+ */
+let sdkFalso = true;
+
+export async function initialize(datos) {
+  if (datos && typeof datos.sdkFalso === "boolean") sdkFalso = datos.sdkFalso;
+}
+
 const SUSTITUTOS = {
   "server-only": path.join(AQUI, "vacio.mjs"),
-  "@bitwarden/sdk-napi": path.join(AQUI, "bitwarden-falso.mjs"),
 };
 
 function conExtension(base) {
@@ -34,6 +47,13 @@ function conExtension(base) {
 }
 
 export async function resolve(especificador, contexto, siguiente) {
+  if (especificador === "@bitwarden/sdk-napi" && sdkFalso) {
+    return {
+      url: pathToFileURL(path.join(AQUI, "bitwarden-falso.mjs")).href,
+      shortCircuit: true,
+    };
+  }
+
   const sustituto = SUSTITUTOS[especificador];
   if (sustituto) {
     return { url: pathToFileURL(sustituto).href, shortCircuit: true };

@@ -60,6 +60,17 @@ export default function RespaldoBitwarden({
     setError(null);
     try {
       const respuesta = await fetch("/api/bitwarden/migrar", { method: metodo });
+
+      // La sesión vencida no llega como 401: el proxy la ataja antes que el
+      // handler y contesta con un 307 a /login, que fetch sigue solo. Sin
+      // esto, el HTML del login rompe el .json() de abajo y el catch culpa
+      // al gestor de secretos —- mandando a revisar Bitwarden cuando lo
+      // único que pasó es que hay que volver a entrar.
+      if (respuesta.redirected || !respuesta.headers.get("content-type")?.includes("json")) {
+        setError("Tu sesión venció. Volvé a entrar y probá de nuevo.");
+        return;
+      }
+
       const cuerpo = await respuesta.json();
       if (!respuesta.ok && respuesta.status !== 207) {
         setError(cuerpo?.error ?? "No pudimos hablar con el gestor de secretos.");
