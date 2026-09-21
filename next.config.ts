@@ -70,6 +70,11 @@ const nextConfig: NextConfig = {
   // le regala gratis.
   poweredByHeader: false,
 
+  // El SDK de Bitwarden usa un binding N-API nativo. Mantenerlo externo
+  // permite que Vercel cargue el binario Linux correspondiente en runtime,
+  // en lugar de intentar empaquetarlo dentro del bundle de Next.
+  serverExternalPackages: ["@bitwarden/sdk-napi"],
+
   async headers() {
     return [
       {
