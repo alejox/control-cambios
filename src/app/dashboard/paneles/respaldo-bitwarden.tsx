@@ -29,13 +29,27 @@ type Diagnostico = {
   listoParaRetirarTextoPlano: boolean;
   creados?: number;
   fallidos?: number;
+  retiradas?: number;
+  conservadas?: number;
 };
 
 const BOTON =
   "h-9 rounded-[9px] bg-ink px-3.5 text-[13px] font-medium text-[#F3F1EA] transition hover:bg-[#2a3127] disabled:opacity-40";
 const ENLACE = "text-[12.5px] text-accent transition hover:underline disabled:opacity-40";
 
-export default function RespaldoBitwarden({ pendientes }: { pendientes: number }) {
+export default function RespaldoBitwarden({
+  pendientes,
+  porRetirar,
+}: {
+  pendientes: number;
+  /**
+   * Cuentas ya respaldadas a las que todavía les queda el texto en la base.
+   * Llega en 0 mientras el interruptor esté apagado: sin él no hay nada que
+   * retirar y ofrecerlo sería un botón que no hace nada.
+   */
+  porRetirar: number;
+}) {
+  const hayTrabajo = pendientes > 0 || porRetirar > 0;
   const router = useRouter();
   const [diagnostico, setDiagnostico] = useState<Diagnostico | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +73,9 @@ export default function RespaldoBitwarden({ pendientes }: { pendientes: number }
       // componente de servidor y mezcla el resultado SIN tirar el estado de
       // React. Una recarga entera se llevaría puesto el diagnóstico que el
       // usuario acaba de pedir, que es justo lo que vino a ver.
-      if (metodo === "POST" && cuerpo?.creados > 0) router.refresh();
+      if (metodo === "POST" && (cuerpo?.creados > 0 || cuerpo?.retiradas > 0)) {
+        router.refresh();
+      }
     } catch {
       setError("No pudimos hablar con el gestor de secretos.");
     } finally {
@@ -71,7 +87,7 @@ export default function RespaldoBitwarden({ pendientes }: { pendientes: number }
   // margen. Ocupar una tarjeta entera para decir "está todo bien" sería
   // empujar los paneles hacia abajo todos los días por una migración que
   // pasa una vez.
-  if (pendientes === 0 && !diagnostico && !error) {
+  if (!hayTrabajo && !diagnostico && !error) {
     return (
       <div className="mb-4 flex flex-wrap items-center gap-2 text-[12.5px] text-ink-soft">
         <span>Tus claves ya están respaldadas en el gestor de secretos.</span>
@@ -103,6 +119,14 @@ export default function RespaldoBitwarden({ pendientes }: { pendientes: number }
               guarda una copia en Bitwarden para poder sacarlas de la base más
               adelante.
             </>
+          ) : porRetirar > 0 ? (
+            <>
+              {porRetirar === 1
+                ? "Queda 1 clave con copia en texto"
+                : `Quedan ${porRetirar} claves con copia en texto`}{" "}
+              en la base. Se borra solo la de cada cuenta cuyo secreto el
+              gestor devuelva idéntico; la que no coincida se queda como está.
+            </>
           ) : (
             "Tus claves ya están respaldadas en el gestor de secretos."
           )}
@@ -114,14 +138,18 @@ export default function RespaldoBitwarden({ pendientes }: { pendientes: number }
       {error && <p className="text-[12.5px] text-critical">{error}</p>}
 
       <div className="flex flex-wrap items-center gap-3">
-        {pendientes > 0 && (
+        {hayTrabajo && (
           <button
             type="button"
             onClick={() => void pedir("POST")}
             disabled={trabajando}
             className={BOTON}
           >
-            {trabajando ? "Respaldando…" : "Respaldar ahora"}
+            {trabajando
+              ? "Trabajando…"
+              : pendientes > 0
+                ? "Respaldar ahora"
+                : "Retirar de la base"}
           </button>
         )}
         <button
@@ -144,7 +172,10 @@ function Resumen({ diagnostico }: { diagnostico: Diagnostico }) {
     pendientes,
     noResuelven,
     difieren,
+    soloEnElGestor,
     listoParaRetirarTextoPlano,
+    retiradas,
+    conservadas,
   } = diagnostico;
 
   return (
@@ -178,13 +209,32 @@ function Resumen({ diagnostico }: { diagnostico: Diagnostico }) {
         </p>
       )}
 
+      {typeof retiradas === "number" && retiradas > 0 && (
+        <p className="text-ink">
+          {retiradas === 1
+            ? "Se borró de la base 1 clave que el gestor ya devuelve igual"
+            : `Se borraron de la base ${retiradas} claves que el gestor ya devuelve igual`}
+          {typeof conservadas === "number" && conservadas > 0
+            ? `; ${conservadas} se conservaron porque no coincidían.`
+            : "."}
+        </p>
+      )}
+
+      {soloEnElGestor > 0 && (
+        <p>
+          {soloEnElGestor === 1
+            ? "1 clave vive solo en el gestor"
+            : `${soloEnElGestor} claves viven solo en el gestor`}
+          : en la base ya no queda su texto.
+        </p>
+      )}
+
       {listoParaRetirarTextoPlano ? (
         <p className="text-ink">
           Todo verificado: el gestor devuelve exactamente lo que dice la base.
-          Ya se puede sacar el texto plano de Supabase.
         </p>
       ) : (
-        <p>Todavía no se puede retirar el texto plano de la base.</p>
+        <p>Todavía queda algo por resolver antes de confiar solo en el gestor.</p>
       )}
     </div>
   );

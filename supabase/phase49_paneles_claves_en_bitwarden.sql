@@ -59,22 +59,41 @@ comment on table public.paneles is
   'siendo lo que impide que un usuario vea los paneles de otro.';
 
 -- ------------------------------------------------------------
--- LA FASE SIGUIENTE, ya escrita y a propósito NO ejecutada
+-- CÓMO SE RETIRA EL TEXTO PLANO (no con este archivo)
 -- ------------------------------------------------------------
 --
--- Esto retira el texto plano. Correrlo antes de tiempo borra la única
--- copia que se sabe buena, y no hay vuelta atrás: la base no guarda
--- historial de esta columna.
+-- El retiro lo hace la app, no un UPDATE pegado acá. La diferencia importa:
 --
--- Precondición, sin excepciones: entrar a /dashboard/paneles CON CADA
--- USUARIO que tenga paneles —- el diagnóstico corre bajo RLS y solo ve los
--- del que pregunta, así que el "está todo bien" de uno no dice nada de los
--- del otro -— y que los dos den:
+--   SQL · Solo puede preguntar si la fila TIENE un secret_id. Una
+--         referencia a un secreto borrado a mano en Bitwarden pasa esa
+--         prueba, y el UPDATE se lleva puesta la última copia de la clave.
+--   APP · Le pide al gestor cada secreto y compara. Borra el texto SOLO de
+--         la cuenta cuyo valor vuelve idéntico; la que no resuelve, o
+--         resuelve distinto, conserva su clave y sale listada en pantalla.
 --
---   pendientes: 0 · noResuelven: [] · difieren: 0
---   listoParaRetirarTextoPlano: true
+-- Los pasos, en orden:
 --
--- Recién entonces, descomentar y correr:
+--   1. Poner BITWARDEN_RETIRE_PLAINTEXT=1 en las variables de Vercel.
+--      Mientras no esté, la app sigue escribiendo el texto en cada guardado
+--      y nada de lo de abajo tiene efecto.
+--   2. Entrar a /dashboard/paneles CON CADA USUARIO que tenga paneles. El
+--      diagnóstico corre bajo RLS y solo ve los del que pregunta, así que
+--      el "está todo bien" de uno no dice nada de los del otro.
+--   3. Apretar el botón. Respalda lo que falte, verifica y borra el texto
+--      de lo verificado, todo en la misma pasada.
+--
+-- Si el interruptor se apaga —- o si falta cualquier variable del gestor -—
+-- la app vuelve sola a escribir el texto en el próximo guardado. Eso es a
+-- propósito: es preferible una clave de más en la base que una fila sin
+-- clave y sin respaldo.
+--
+-- ------------------------------------------------------------
+-- El equivalente en SQL, que NO verifica nada
+-- ------------------------------------------------------------
+--
+-- Queda escrito por si alguna vez hay que hacerlo a mano sobre miles de
+-- filas, donde ir de a una desde la app no daría. Tiene el agujero descrito
+-- arriba: borra el texto de toda cuenta con secret_id, resuelva o no.
 --
 --   update public.paneles
 --   set cuentas = (

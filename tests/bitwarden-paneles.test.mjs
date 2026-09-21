@@ -164,10 +164,18 @@ test("the migration only creates missing secrets and never returns values", () =
   // revertida al valor viejo de la base en la próxima pasada.
   assert.match(puente, /if \(!cuenta\.clave \|\| cuenta\.secret_id\) return cuenta;/);
   assert.doesNotMatch(migrar, /actualizarSecreto/);
-  // La respuesta lleva números y nombres de panel, nunca valores.
+  // La respuesta lleva números y nombres de panel, nunca valores. Se mira
+  // dentro de cada NextResponse.json y no en el archivo entero: la ruta sí
+  // consulta `!c.clave` para contar filas, que es preguntar si está vacía,
+  // no leer lo que dice.
   assert.doesNotMatch(migrar, /\.value\b/);
-  // Solo la palabra en los comentarios: ninguna clave se lee ni se devuelve.
-  assert.doesNotMatch(migrar, /\.clave\b|clave:/);
+  const respuestas = [...migrar.matchAll(/NextResponse\.json\(([\s\S]*?)\);/g)].map(
+    (m) => m[1],
+  );
+  assert.ok(respuestas.length >= 4, "no se encontraron las respuestas de la ruta");
+  for (const cuerpo of respuestas) {
+    assert.doesNotMatch(cuerpo, /clave/, `una respuesta de la ruta menciona una clave: ${cuerpo}`);
+  }
   // Y el texto plano no se toca: esta fase agrega la referencia.
   assert.match(migrar, /\.update\(\{ cuentas: resultado\.cuentas \}\)/);
 });
@@ -184,7 +192,10 @@ test("the plaintext retirement is documented but not executed", () => {
   // El order by no es decorativo: sin él jsonb_agg puede reordenar las
   // cuentas y emparejar cada usuario con la clave de otra.
   assert.match(fase49, /order by orden_cuenta/);
-  assert.match(fase49, /listoParaRetirarTextoPlano: true/);
+  assert.match(fase49, /BITWARDEN_RETIRE_PLAINTEXT=1/);
+  // Y el archivo tiene que decir que el SQL de abajo NO verifica nada: es
+  // justo la razón por la que el retiro lo hace la app.
+  assert.match(fase49, /que NO verifica nada/);
 });
 
 test("the verification gate demands zero pending, zero unresolved, zero mismatched", () => {
@@ -227,4 +238,62 @@ test("claveLegible is a form field and never gets stored in the database", () =>
   assert.doesNotMatch(cuerpo, /\.\.\.cuentas\[i\]/);
   assert.match(cuerpo, /const validadas: CuentaGuardada\[\]/);
   assert.match(puente, /export type CuentaEntrante = CuentaGuardada & \{ claveLegible: boolean \}/);
+});
+
+test("plaintext is only retired behind an explicit switch that needs the manager", () => {
+  // Las dos condiciones van juntas. Sin estaConfigurado(), encender el
+  // interruptor con una variable del gestor faltante dejaría filas sin clave
+  // y sin respaldo en ningún lado.
+  assert.match(
+    gestor,
+    /return process\.env\.BITWARDEN_RETIRE_PLAINTEXT === "1" && estaConfigurado\(\);/,
+  );
+
+  // Con el interruptor apagado no se escribe una sola fila.
+  assert.match(
+    puente,
+    /if \(!textoPlanoRetirado\(\)\) return \{ cambios, retiradas, conservadas \};/,
+  );
+});
+
+test("retiring a password verifies that secret first, one account at a time", () => {
+  const cuerpo = puente.slice(puente.indexOf("export async function retirarTextoPlano"));
+
+  // Una cuenta sin secreto no se toca nunca: borrarle la clave es perderla.
+  assert.match(cuerpo, /if \(!cuenta\.clave \|\| !cuenta\.secret_id\) return cuenta;/);
+  // Y solo se borra si el gestor devuelve EXACTAMENTE lo mismo. Comprobar
+  // que el secreto existe no alcanza: puede resolver otro valor.
+  assert.match(cuerpo, /if \(delGestor !== cuenta\.clave\) \{/);
+  assert.ok(
+    cuerpo.indexOf("delGestor !== cuenta.clave") < cuerpo.indexOf("retiradas += 1"),
+    "se cuenta como retirada antes de haber comparado",
+  );
+  assert.match(cuerpo, /conservadas \+= 1/);
+});
+
+test("a save stops rewriting the plaintext once it is retired", () => {
+  // Sin esto, el retiro dura hasta el próximo guardado de cada panel: la
+  // fila se vuelve a escribir con la clave adentro y nadie lo nota.
+  assert.match(puente, /clave: retirar \? "" : cuenta\.clave,/);
+  assert.match(puente, /const retirar = textoPlanoRetirado\(\);/);
+  // La misma regla en el camino de la migración masiva, para que una fila no
+  // quede con texto o sin texto según por dónde pasó.
+  assert.match(puente, /clave: textoPlanoRetirado\(\) \? "" : cuenta\.clave,/);
+
+  // Pero solo para la cuenta cuyo secreto se confirmó: la rama rechazada
+  // conserva el texto.
+  const sincronizar = puente.slice(
+    puente.indexOf("export async function sincronizarCuentas"),
+    puente.indexOf("export async function limpiarSecretos"),
+  );
+  assert.match(sincronizar, /return validadas\[i\];/);
+});
+
+test("the retirement counts only rows the database actually accepted", () => {
+  const cuerpo = migrar.slice(migrar.indexOf("if (textoPlanoRetirado())"));
+  // El contador va DESPUÉS del update y detrás de un continue en el error:
+  // informar "borradas 12" cuando la base rechazó la mitad manda a apagar
+  // el respaldo creyendo que ya no hace falta.
+  assert.ok(cuerpo.indexOf("continue;") < cuerpo.indexOf("retiradas +="));
+  assert.match(cuerpo, /\.update\(\{ cuentas: cambio\.cuentas \}\)/);
 });

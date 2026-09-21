@@ -7,6 +7,7 @@ import {
   estaConfigurado,
   leerSecretos,
   mensajeDeError,
+  textoPlanoRetirado,
 } from "@/lib/bitwarden-secrets";
 import type { Cuenta } from "@/app/dashboard/paneles/estado";
 
@@ -190,6 +191,17 @@ export async function sincronizarCuentas(opciones: {
     };
   }
 
+  // Con el interruptor puesto, la clave que se acaba de escribir en el
+  // gestor NO se copia a la fila. Solo se aplica a la cuenta cuyo secreto
+  // se confirmó en ESTA llamada: si el gestor rechazó, el texto se conserva,
+  // porque dejar la fila sin clave y sin respaldo es perderla.
+  const retirar = textoPlanoRetirado();
+  const guardada = (cuenta: CuentaGuardada, secret_id: string): CuentaGuardada => ({
+    usuario: cuenta.usuario,
+    clave: retirar ? "" : cuenta.clave,
+    secret_id,
+  });
+
   const resultados = await Promise.allSettled(
     validadas.map(async (cuenta, i): Promise<CuentaGuardada> => {
       if (!cuenta.clave) {
@@ -219,7 +231,7 @@ export async function sincronizarCuentas(opciones: {
           usuario: cuenta.usuario,
           clave: cuenta.clave,
         });
-        return cuenta;
+        return guardada(cuenta, cuenta.secret_id);
       }
 
       const secret_id = await crearSecreto({
@@ -228,7 +240,7 @@ export async function sincronizarCuentas(opciones: {
         usuario: cuenta.usuario,
         clave: cuenta.clave,
       });
-      return { ...cuenta, secret_id };
+      return guardada(cuenta, secret_id);
     }),
   );
 
@@ -313,7 +325,15 @@ export async function respaldarPendientes(opciones: {
         usuario: cuenta.usuario,
         clave: cuenta.clave,
       });
-      return { ...cuenta, secret_id };
+      // La misma regla que al guardar un panel: el texto se retira solo
+      // cuando el secreto que lo reemplaza quedó confirmado recién ahora.
+      // Tener dos reglas distintas para lo mismo dejaría filas con texto y
+      // filas sin él según por qué camino pasaron.
+      return {
+        usuario: cuenta.usuario,
+        clave: textoPlanoRetirado() ? "" : cuenta.clave,
+        secret_id,
+      };
     }),
   );
 
@@ -424,4 +444,81 @@ export async function verificarRespaldo(
     diagnostico.difieren.length === 0;
 
   return diagnostico;
+}
+
+/**
+ * Borra el texto plano de las cuentas cuyo secreto ya se comprobó.
+ *
+ * Compara una por una ANTES de borrar: solo pierde el texto la cuenta cuyo
+ * secreto el gestor devuelve y devuelve idéntico. La que no resuelve, o la
+ * que resuelve distinto, conserva su clave y aparece en el diagnóstico.
+ *
+ * Esta es la razón por la que el retiro vive en la app y no en un `update`
+ * pegado a mano en el SQL Editor. El SQL solo puede preguntar si la fila
+ * TIENE un secret_id, que es una pregunta distinta de si ese secret_id
+ * sirve: una referencia a un secreto borrado en Bitwarden pasa esa prueba y
+ * se lleva puesta la última copia de la clave. Acá esa cuenta se salta.
+ *
+ * No borra nada si el interruptor está apagado. Y una cuenta sin secreto no
+ * se toca jamás, tenga el interruptor el valor que tenga.
+ */
+export async function retirarTextoPlano(filas: FilaParaMigrar[]) {
+  const cambios: Array<{ id: string; cuentas: CuentaGuardada[] }> = [];
+  let retiradas = 0;
+  let conservadas = 0;
+
+  if (!textoPlanoRetirado()) return { cambios, retiradas, conservadas };
+
+  const porFila = filas.map((fila) => normalizar(fila.cuentas));
+  const ids = porFila.flatMap((cuentas) =>
+    cuentas.map((c) => c.secret_id).filter((id): id is string => Boolean(id)),
+  );
+  if (ids.length === 0) return { cambios, retiradas, conservadas };
+
+  const valores = await leerSecretos(ids);
+
+  filas.forEach((fila, i) => {
+    let tocada = false;
+    const cuentas = porFila[i].map((cuenta): CuentaGuardada => {
+      if (!cuenta.clave || !cuenta.secret_id) return cuenta;
+
+      const delGestor = valores.get(cuenta.secret_id);
+      if (delGestor !== cuenta.clave) {
+        // No resuelve, o resuelve otra cosa. El texto se queda: es la única
+        // copia que se sabe buena.
+        conservadas += 1;
+        return cuenta;
+      }
+
+      tocada = true;
+      retiradas += 1;
+      return { usuario: cuenta.usuario, clave: "", secret_id: cuenta.secret_id };
+    });
+
+    if (tocada) cambios.push({ id: fila.id, cuentas });
+  });
+
+  return { cambios, retiradas, conservadas };
+}
+
+/**
+ * Cuántas cuentas faltan respaldar y cuántas conservan todavía su texto.
+ *
+ * Se cuenta sobre las filas CRUDAS de la base y no sobre lo que devuelve
+ * `resolverCuentas`: ahí la clave ya viene resuelta desde el gestor, así que
+ * "tiene texto plano" deja de poder distinguirse de "tiene clave".
+ */
+export function contarMigracion(filas: Array<{ cuentas: unknown }>) {
+  let pendientes = 0;
+  let conTextoPlano = 0;
+
+  for (const fila of filas) {
+    for (const cuenta of normalizar(fila.cuentas)) {
+      if (!cuenta.clave) continue;
+      if (cuenta.secret_id) conTextoPlano += 1;
+      else pendientes += 1;
+    }
+  }
+
+  return { pendientes, conTextoPlano };
 }

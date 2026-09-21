@@ -44,6 +44,29 @@ export function estaConfigurado() {
   return Boolean(ACCESS_TOKEN && ORGANIZATION_ID && PROJECT_ID);
 }
 
+/**
+ * El interruptor que retira el texto plano de la base.
+ *
+ * Mientras está apagado, cada clave se guarda en los dos lados: el secreto
+ * en el gestor y el texto en Supabase. Encenderlo hace que la app deje de
+ * escribir el texto, y recién ahí el `update` de la fase 50 sirve de algo:
+ * sin este interruptor, borrar las claves con SQL dura hasta el próximo
+ * guardado de cada panel, que las vuelve a escribir sin que nadie lo note.
+ *
+ * Es una variable de entorno y no una deducción del estado de los datos a
+ * propósito. Es la decisión de tirar la única copia de respaldo: la toma
+ * una persona que miró el diagnóstico, no un `if` que la infiere.
+ *
+ * El `estaConfigurado()` del final no es redundante. Si algún día falta una
+ * variable del gestor, esto tiene que devolver false y la app tiene que
+ * volver a escribir el texto: lo contrario es guardar claves vacías sin
+ * respaldo en ningún lado, que es exactamente la pérdida que toda esta
+ * migración vino a evitar.
+ */
+export function textoPlanoRetirado() {
+  return process.env.BITWARDEN_RETIRE_PLAINTEXT === "1" && estaConfigurado();
+}
+
 function configuracion() {
   if (!ACCESS_TOKEN || !ORGANIZATION_ID || !PROJECT_ID) {
     throw new Error("Bitwarden Secrets Manager no está configurado completamente.");

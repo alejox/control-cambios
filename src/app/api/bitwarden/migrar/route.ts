@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { estaConfigurado, mensajeDeError } from "@/lib/bitwarden-secrets";
+import {
+  estaConfigurado,
+  mensajeDeError,
+  textoPlanoRetirado,
+} from "@/lib/bitwarden-secrets";
 import {
   cuentasGuardadas,
   respaldarPendientes,
+  retirarTextoPlano,
   verificarRespaldo,
   type FilaParaMigrar,
 } from "@/lib/paneles-secretos";
@@ -21,7 +26,9 @@ export const maxDuration = 90;
  * Pasa las claves que están en texto plano en Supabase a Bitwarden.
  *
  *   GET   diagnostica y no escribe nada.
- *   POST  crea los secretos que falten y vuelve a diagnosticar.
+ *   POST  crea los secretos que falten, retira el texto plano que ya esté
+ *         verificado (solo con BITWARDEN_RETIRE_PLAINTEXT=1) y vuelve a
+ *         diagnosticar.
  *
  * CADA USUARIO MIGRA LO SUYO. Esto no usa la service_role key a propósito,
  * aunque un solo botón de admin habría sido más cómodo: migrar implica
@@ -169,6 +176,49 @@ export async function POST() {
     }
   }
 
+  // Segunda pasada: sacar de la base el texto de las claves que el gestor
+  // ya devuelve idénticas. Va DESPUÉS de crear las que faltaban y se relee
+  // la base para verlas, así una cuenta migrada recién ahora puede quedar
+  // limpia en la misma corrida.
+  //
+  // Sin el interruptor puesto esto no hace nada: retirarTextoPlano se
+  // devuelve vacío y no se escribe una sola fila.
+  let retiradas = 0;
+  let conservadas = 0;
+
+  if (textoPlanoRetirado()) {
+    try {
+      const { data } = await supabase
+        .from("paneles")
+        .select("id, nombre, cuentas")
+        .order("created_at", { ascending: true });
+
+      const retiro = await retirarTextoPlano((data ?? []) as FilaParaMigrar[]);
+      conservadas = retiro.conservadas;
+
+      for (const cambio of retiro.cambios) {
+        const { error } = await supabase
+          .from("paneles")
+          .update({ cuentas: cambio.cuentas })
+          .eq("id", cambio.id)
+          .select("id");
+
+        if (error) {
+          console.error(
+            `[migración] el panel ${cambio.id} no pudo retirar su texto plano:`,
+            error.message,
+          );
+          continue;
+        }
+        retiradas += cambio.cuentas.filter((c) => !c.clave && c.secret_id).length;
+      }
+    } catch (error) {
+      // Que falle el retiro no ensucia nada: lo que no se borró sigue
+      // estando, y la próxima pasada lo intenta de nuevo.
+      console.error("[migración] el retiro de texto plano falló:", mensajeDeError(error));
+    }
+  }
+
   try {
     // Se relee de la base en vez de confiar en lo que acabamos de escribir:
     // el diagnóstico tiene que reflejar lo que quedó guardado, no lo que
@@ -180,11 +230,22 @@ export async function POST() {
       .order("created_at", { ascending: true });
 
     const diagnostico = await verificarRespaldo((data ?? []) as FilaParaMigrar[]);
-    return NextResponse.json({ creados, fallidos, ...diagnostico });
+    return NextResponse.json({
+      creados,
+      fallidos,
+      retiradas,
+      conservadas,
+      ...diagnostico,
+    });
   } catch (error) {
     console.error("[migración] el diagnóstico falló:", mensajeDeError(error));
     return NextResponse.json(
-      { creados, fallidos, error: "Migramos, pero no pudimos verificar el resultado." },
+      {
+        creados,
+        fallidos,
+        retiradas,
+        error: "Migramos, pero no pudimos verificar el resultado.",
+      },
       { status: 207 },
     );
   }

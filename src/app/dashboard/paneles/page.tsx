@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { estaConfigurado } from "@/lib/bitwarden-secrets";
-import { resolverCuentas } from "@/lib/paneles-secretos";
+import { estaConfigurado, textoPlanoRetirado } from "@/lib/bitwarden-secrets";
+import { contarMigracion, resolverCuentas } from "@/lib/paneles-secretos";
 import type { Panel } from "./estado";
 import Paneles from "./paneles";
 import RespaldoBitwarden from "./respaldo-bitwarden";
@@ -53,14 +53,12 @@ export default async function PanelesPage() {
 
   const gestorConfigurado = estaConfigurado();
 
-  // Cuántas claves todavía no tienen copia en el gestor. Se cuenta acá,
-  // donde los datos ya están, y no con una llamada del navegador: el aviso
-  // de migración no vale un viaje de red más por cada visita a la pantalla.
-  const pendientes = paneles.reduce(
-    (total, panel) =>
-      total + panel.cuentas.filter((c) => c.clave && !c.secret_id).length,
-    0,
-  );
+  // Qué falta de la migración. Se cuenta sobre las filas CRUDAS y acá,
+  // donde los datos ya están: el aviso no vale un viaje de red más por cada
+  // visita a la pantalla, y sobre `paneles` ya no se podría distinguir una
+  // clave que vino del gestor de una que sigue en texto en la base.
+  const retirado = textoPlanoRetirado();
+  const { pendientes, conTextoPlano } = contarMigracion(data ?? []);
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:w-[90%] sm:px-6 sm:py-10">
@@ -84,7 +82,13 @@ export default async function PanelesPage() {
             "está en Bitwarden" sería falso: el texto sigue en la base y
             quien tenga acceso a la base lo ve. */}
         <p className="mt-2 text-[12.5px] leading-relaxed text-ink-soft/80">
-          {gestorConfigurado ? (
+          {gestorConfigurado && retirado && conTextoPlano === 0 && pendientes === 0 ? (
+            <>
+              Las claves viven en el gestor de secretos. En la base queda solo
+              una referencia: quien la lea —- un backup, el panel de Supabase
+              -— ve un identificador, no tu contraseña.
+            </>
+          ) : gestorConfigurado ? (
             <>
               Las claves se están pasando al gestor de secretos. Hasta que
               termine la migración quedan también en la base, tal como las
@@ -102,7 +106,12 @@ export default async function PanelesPage() {
         </p>
       </div>
 
-      {gestorConfigurado && !error && <RespaldoBitwarden pendientes={pendientes} />}
+      {gestorConfigurado && !error && (
+        <RespaldoBitwarden
+          pendientes={pendientes}
+          porRetirar={retirado ? conTextoPlano : 0}
+        />
+      )}
 
       {error ? (
         <div className="rounded-2xl border border-critical-soft bg-critical-soft/40 p-10 text-center text-[14.5px] text-critical shadow-sm">
