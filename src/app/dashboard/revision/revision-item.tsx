@@ -145,7 +145,7 @@ export default function RevisionItem({
               {aprobados} de {depositos.length} aprobados
             </p>
           </div>
-          <div className="grid grid-cols-[0.7fr_0.85fr_1.3fr_1fr_0.9fr_0.85fr_1.1fr] gap-3 border-b border-border pb-2 font-mono text-[10px] uppercase tracking-widest text-ink-soft">
+          <div className="hidden xl:grid xl:grid-cols-[0.7fr_0.85fr_1.3fr_1fr_0.9fr_0.85fr_1.1fr] xl:gap-3 border-b border-border pb-2 font-mono text-[10px] uppercase tracking-widest text-ink-soft">
             <span className="text-center">Ok</span>
             <span>Fecha</span>
             <span>Referencia</span>

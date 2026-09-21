@@ -97,11 +97,11 @@ export default async function LiquidacionPage({
             Cobra quien recibió en Bs
           </p>
           <div className="flex flex-col gap-1.5 text-[13px]">
-            <div className="flex items-baseline justify-between gap-3">
+            <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
               <span className="text-ink-soft">Ventas en Bs</span>
               <span className="text-ink">{formatMonto(liquidacion.usdt_bs, "USDT")}</span>
             </div>
-            <div className="flex items-baseline justify-between gap-3">
+            <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
               <span className="text-ink-soft">Comisiones en COP</span>
               <span className="text-teal">
                 + {formatMonto(liquidacion.comision_cop, "USDT")}
@@ -121,11 +121,11 @@ export default async function LiquidacionPage({
             Cobra quien recibió en COP
           </p>
           <div className="flex flex-col gap-1.5 text-[13px]">
-            <div className="flex items-baseline justify-between gap-3">
+            <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
               <span className="text-ink-soft">Ventas en COP</span>
               <span className="text-ink">{formatMonto(liquidacion.usdt_cop, "USDT")}</span>
             </div>
-            <div className="flex items-baseline justify-between gap-3">
+            <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
               <span className="text-ink-soft">Comisiones en Bs</span>
               <span className="text-teal">
                 + {formatMonto(liquidacion.comision_bs, "USDT")}

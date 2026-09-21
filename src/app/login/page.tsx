@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import SesionEnFragmento from "./sesion-en-fragmento";
@@ -11,6 +12,7 @@ import Marca from "../marca";
  * la app la usan dos personas y el alta pública era superficie sin uso.
  */
 export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -31,7 +33,7 @@ export default function LoginPage() {
       setError(traducirError(error.message));
       setLoading(false);
     } else {
-      window.location.href = "/dashboard";
+      router.push("/dashboard");
     }
   }
 

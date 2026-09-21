@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -9,6 +8,41 @@ export type RolState = { error: string | null; ok: boolean };
 
 const ROLES = ["sin_acceso", "colaborador", "admin"] as const;
 export type Rol = (typeof ROLES)[number];
+
+/**
+ * Los enlaces de Supabase terminan en este callback antes de mostrar el
+ * formulario de contraseña. El origen nunca se toma de Host ni de cabeceras
+ * reenviadas: un proxy mal configurado no debe poder convertir un enlace de
+ * acceso en un enlace hacia otro dominio.
+ */
+function redirectSeguroParaContrasena():
+  | { redirectTo: string }
+  | { error: string } {
+  const valor = process.env.APP_ORIGIN?.trim();
+  if (!valor) {
+    return {
+      error: "Falta APP_ORIGIN: configurá el origen HTTPS público de la aplicación.",
+    };
+  }
+
+  try {
+    const origen = new URL(valor);
+    const esOrigenPuro =
+      origen.pathname === "/" && !origen.search && !origen.hash && !origen.username && !origen.password;
+
+    if (origen.protocol !== "https:" || !esOrigenPuro) {
+      throw new Error("origen no válido");
+    }
+
+    return {
+      redirectTo: `${origen.origin}/auth/callback?next=/update-password`,
+    };
+  } catch {
+    return {
+      error: "APP_ORIGIN debe ser un origen HTTPS sin ruta, usuario, parámetros ni fragmento.",
+    };
+  }
+}
 
 /**
  * Cambia el rol de un usuario.
@@ -205,20 +239,13 @@ export async function invitarUsuario(
     };
   }
 
-  // headers() es async desde Next 15; el origen sale de la request para que el
-  // link sirva igual en local que en produccion, sin una variable de entorno mas.
-  const h = await headers();
-  const host = h.get("host");
-  if (!host) {
-    return { error: "No se pudo armar el link: falta el host de la request.", link: null };
-  }
-  const proto = h.get("x-forwarded-proto") ?? "http";
-  const redirectTo = `${proto}://${host}/auth/callback?next=/update-password`;
+  const redirect = redirectSeguroParaContrasena();
+  if ("error" in redirect) return { error: redirect.error, link: null };
 
   const invitacion = await admin.auth.admin.generateLink({
     type: "invite",
     email,
-    options: { redirectTo },
+    options: { redirectTo: redirect.redirectTo },
   });
 
   let link = invitacion.error ? null : invitacion.data.properties.action_link;
@@ -237,7 +264,7 @@ export async function invitarUsuario(
     const recuperacion = await admin.auth.admin.generateLink({
       type: "recovery",
       email,
-      options: { redirectTo },
+      options: { redirectTo: redirect.redirectTo },
     });
     if (recuperacion.error) return { error: recuperacion.error.message, link: null };
 
@@ -311,15 +338,8 @@ export async function regenerarAcceso(
     };
   }
 
-  // headers() es async desde Next 15; el origen sale de la request para que el
-  // link sirva igual en local que en produccion, sin una variable de entorno mas.
-  const h = await headers();
-  const host = h.get("host");
-  if (!host) {
-    return { error: "No se pudo armar el link: falta el host de la request.", link: null };
-  }
-  const proto = h.get("x-forwarded-proto") ?? "http";
-  const redirectTo = `${proto}://${host}/auth/callback?next=/update-password`;
+  const redirect = redirectSeguroParaContrasena();
+  if ("error" in redirect) return { error: redirect.error, link: null };
 
   // Va como "recovery" y no como "invite" porque la cuenta ya existe: "invite"
   // es para dar de alta y falla contra un correo que ya esta registrado.
@@ -328,7 +348,7 @@ export async function regenerarAcceso(
   const { data, error } = await admin.auth.admin.generateLink({
     type: "recovery",
     email,
-    options: { redirectTo },
+    options: { redirectTo: redirect.redirectTo },
   });
 
   if (error) return { error: error.message, link: null };

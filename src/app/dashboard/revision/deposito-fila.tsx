@@ -37,43 +37,55 @@ export default function DepositoFila({
     : `Depósito del ${deposito.fecha}`;
 
   return (
-    <div className="grid grid-cols-[0.7fr_0.85fr_1.3fr_1fr_0.9fr_0.85fr_1.1fr] items-center gap-3 py-2.5 text-[12.5px]">
-      <label
-        className={`flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-2 py-1 transition ${
-          tildado
-            ? "border-teal bg-teal-soft/50 text-[#215d4d]"
-            : "border-border text-ink-soft hover:bg-surface-alt"
-        }`}
-        title={aprobado ? "Ya aprobado — destildalo para dejarlo como estaba" : "Marcar como correcto"}
-      >
-        <input
-          type="checkbox"
-          name="seleccion"
-          value={deposito.id}
-          checked={tildado}
-          onChange={(e) => onTildar(e.target.checked)}
-          className="h-3.5 w-3.5 accent-[#2f7f6c]"
-        />
-        <span className="font-mono text-[10.5px] uppercase tracking-wide">
-          {aprobado ? "ok" : "va"}
+    <div className="flex flex-col gap-2.5 py-3 text-[12.5px] xl:grid xl:grid-cols-[0.7fr_0.85fr_1.3fr_1fr_0.9fr_0.85fr_1.1fr] xl:items-center xl:gap-3 xl:py-2.5">
+      <div className="flex items-center justify-between gap-3 xl:justify-center">
+        <span className="font-mono text-[10px] uppercase tracking-widest text-ink-soft xl:hidden">Estado</span>
+        <label
+          className={`flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-2 py-1 transition ${
+            tildado
+              ? "border-teal bg-teal-soft/50 text-[#215d4d]"
+              : "border-border text-ink-soft hover:bg-surface-alt"
+          }`}
+          title={aprobado ? "Ya aprobado — destildalo para dejarlo como estaba" : "Marcar como correcto"}
+        >
+          <input
+            type="checkbox"
+            name="seleccion"
+            value={deposito.id}
+            checked={tildado}
+            onChange={(e) => onTildar(e.target.checked)}
+            className="h-3.5 w-3.5 accent-[#2f7f6c]"
+          />
+          <span className="font-mono text-[10.5px] uppercase tracking-wide">
+            {aprobado ? "ok" : "va"}
+          </span>
+        </label>
+      </div>
+
+      <div className="flex items-baseline justify-between gap-3 xl:block">
+        <span className="font-mono text-[10px] uppercase tracking-widest text-ink-soft xl:hidden">Fecha</span>
+        <span className="text-ink-soft">{formatFecha(deposito.fecha)}</span>
+      </div>
+
+      <div className="flex min-w-0 items-baseline justify-between gap-3 xl:block">
+        <span className="shrink-0 font-mono text-[10px] uppercase tracking-widest text-ink-soft xl:hidden">Referencia</span>
+        <span className="min-w-0 break-words font-mono text-[12px] text-ink-soft xl:block xl:truncate">
+          {deposito.referencia ?? "sin referencia"}
         </span>
-      </label>
+      </div>
 
-      <span className="text-ink-soft">{formatFecha(deposito.fecha)}</span>
+      <div className="flex items-baseline justify-between gap-3 xl:block xl:text-right">
+        <span className="font-mono text-[10px] uppercase tracking-widest text-ink-soft xl:hidden">Recibido</span>
+        <span className="text-ink-soft">{formatMonto(deposito.valor_origen, moneda)}</span>
+      </div>
 
-      <span className="min-w-0 truncate font-mono text-[12px] text-ink-soft">
-        {deposito.referencia ?? "sin referencia"}
-      </span>
+      <div className="flex items-baseline justify-between gap-3 xl:block xl:text-right">
+        <span className="font-mono text-[10px] uppercase tracking-widest text-ink-soft xl:hidden">Tasa</span>
+        <span className="text-ink-soft">{tasa ? formatMonto(tasa, moneda) : "—"}</span>
+      </div>
 
-      <span className="text-right text-ink-soft">
-        {formatMonto(deposito.valor_origen, moneda)}
-      </span>
-
-      <span className="text-right text-ink-soft">
-        {tasa ? formatMonto(tasa, moneda) : "—"}
-      </span>
-
-      <span className="flex items-center justify-end gap-1">
+      <div className="flex items-center justify-between gap-3 xl:justify-end">
+        <span className="font-mono text-[10px] uppercase tracking-widest text-ink-soft xl:hidden">USDT</span>
         <input
           // El nombre lleva el id adentro: los no tildados no mandan su
           // checkbox, asi que por indice las posiciones no coincidirian.
@@ -87,9 +99,10 @@ export default function DepositoFila({
           title={`Vacío, cuenta como ${proporcional} USDT`}
           className="h-8 w-20 rounded-[8px] border border-border bg-surface px-2 text-right text-[12.5px] outline-none focus:border-accent focus:ring-1 focus:ring-accent"
         />
-      </span>
+      </div>
 
-      <span className="text-right">
+      <div className="flex items-baseline justify-between gap-3 xl:block xl:text-right">
+        <span className="font-mono text-[10px] uppercase tracking-widest text-ink-soft xl:hidden">Comprobante</span>
         {tieneComprobante({
           path: deposito.comprobante_path,
           texto: deposito.comprobante_texto,
@@ -110,7 +123,7 @@ export default function DepositoFila({
         ) : (
           <span className="text-ink-soft/60">sin comprobante</span>
         )}
-      </span>
+      </div>
     </div>
   );
 }

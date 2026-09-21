@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { extraerConIA } from "@/lib/comprobante-ia";
 
 const BUCKET = "comprobantes";
+const RATE_LIMIT_ERROR =
+  "La lectura automática llegó a su límite. Esperá unos minutos o cargá los datos a mano.";
 
 // Vercel corta a los 300s por defecto en TODOS los planes. Este numero es
 // el TECHO de los tres presupuestos que tiene una lectura, y tienen que
@@ -71,6 +73,31 @@ export async function POST(request: Request) {
   // archivo plano, sin "/" ni ".." que permitan salir de la carpeta.
   if (typeof path !== "string" || path === "" || !/^[\w.-]+$/.test(path)) {
     return NextResponse.json({ error: "Ruta de comprobante inválida." }, { status: 400 });
+  }
+
+  // Este cupo se reserva en Postgres, no en memoria del proceso: la app puede
+  // correr en varias instancias y todas tienen que ver el mismo límite. Se
+  // hace antes de bajar el archivo y, sobre todo, antes de llamar a Gemini.
+  const { data: cupos, error: errorCupo } = await supabase.rpc(
+    "consumir_cupo_comprobante_ia",
+  );
+  if (errorCupo) {
+    // Si la migración no está aplicada o PostgREST no puede llegar a la base,
+    // no se deja pasar una llamada pagada sin haber podido limitarla.
+    console.error("[comprobante] no se pudo reservar el cupo de IA:", errorCupo.message);
+    return NextResponse.json(
+      { error: "No pudimos verificar el cupo de lectura automática. Probá de nuevo." },
+      { status: 503 },
+    );
+  }
+
+  const cupo = cupos?.[0];
+  if (!cupo?.allowed) {
+    const retryAfter = Math.max(1, Math.ceil(Number(cupo?.retry_after_seconds) || 60));
+    return NextResponse.json(
+      { error: RATE_LIMIT_ERROR },
+      { status: 429, headers: { "Retry-After": String(retryAfter) } },
+    );
   }
 
   const { data: archivo, error: errorDescarga } = await supabase.storage
