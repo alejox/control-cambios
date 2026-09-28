@@ -4,6 +4,7 @@ import { useActionState, useRef } from "react";
 import { liquidar, type LiquidarState } from "./liquidaciones/actions";
 import { formatMonto } from "@/lib/items";
 import { previaDeCorte } from "@/lib/liquidaciones";
+import { Personaje } from "./personaje";
 
 /**
  * Cierra las cuentas entre las dos partes. Muestra el corte antes de
@@ -87,9 +88,12 @@ export default function LiquidarButton({
 
           <div className="flex flex-col gap-3 px-6 py-5">
             <div className="flex flex-col gap-1.5 rounded-[10px] border border-accent-soft bg-accent-soft/30 px-3.5 py-3">
-              <p className="font-mono text-[10.5px] uppercase tracking-widest text-[#8f5e1f]">
-                Cobra quien recibió en Bs
-              </p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-mono text-[10.5px] uppercase tracking-widest text-[#8f5e1f]">
+                  Cobra quien recibió en Bs
+                </p>
+                <Personaje pais="co" className="-my-1 h-9 w-9 flex-none" />
+              </div>
               <div className="flex flex-col gap-1 text-[12.5px]">
                 <div className="flex items-baseline justify-between gap-3">
                   <span className="text-ink-soft">Ventas en Bs</span>
@@ -106,9 +110,12 @@ export default function LiquidarButton({
             </div>
 
             <div className="flex flex-col gap-1.5 rounded-[10px] border border-teal-soft bg-teal-soft/30 px-3.5 py-3">
-              <p className="font-mono text-[10.5px] uppercase tracking-widest text-[#215d4d]">
-                Cobra quien recibió en COP
-              </p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-mono text-[10.5px] uppercase tracking-widest text-[#215d4d]">
+                  Cobra quien recibió en COP
+                </p>
+                <Personaje pais="ve" className="-my-1 h-9 w-9 flex-none" />
+              </div>
               <div className="flex flex-col gap-1 text-[12.5px]">
                 <div className="flex items-baseline justify-between gap-3">
                   <span className="text-ink-soft">Ventas en COP</span>
@@ -124,8 +131,17 @@ export default function LiquidarButton({
               </p>
             </div>
 
-            <div className="flex items-baseline justify-between gap-4 border-t border-border pt-3">
-              <span className="text-[13.5px] font-medium text-ink">Neto del corte</span>
+            <div className="flex items-center justify-between gap-4 border-t border-border pt-3">
+              <span className="flex items-center gap-2 text-[13.5px] font-medium text-ink">
+                {favor.lado !== "ninguno" && (
+                  <Personaje
+                    pais={favor.lado === "bs" ? "co" : "ve"}
+                    lider
+                    className="h-10 w-10 flex-none"
+                  />
+                )}
+                Neto del corte
+              </span>
               <span
                 className="text-[19px] font-medium text-ink"
                 style={{ fontFamily: "var(--font-display)" }}
