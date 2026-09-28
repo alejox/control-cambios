@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import ComisionesPorMoneda from "./comisiones-por-moneda";
 import ItemsTable, { type DepositoFila } from "./items-table";
 import LiquidarButton from "./liquidar-button";
+import { Personaje } from "./personaje";
 import RecalcularComisiones from "./recalcular-comisiones";
 import { COMISION_PCT_FALLBACK, leerComisiones } from "@/lib/configuracion";
 import { formatMonto, resumirRecalculo, type Item } from "@/lib/items";
@@ -154,9 +155,12 @@ export default async function DashboardPage() {
               </p>
             </div>
             <div className="rounded-2xl border border-accent-soft bg-accent-soft/30 p-6">
-              <p className="mb-3 font-mono text-[11px] uppercase tracking-widest text-[#8f5e1f]">
-                Cobra quien recibió en Bs
-              </p>
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <p className="font-mono text-[11px] uppercase tracking-widest text-[#8f5e1f]">
+                  Cobra quien recibió en Bs
+                </p>
+                <Personaje pais="co" className="-mt-2 h-12 w-12 flex-none" />
+              </div>
               <div className="flex flex-col gap-1.5 text-[13px]">
                 <div className="flex items-baseline justify-between gap-3">
                   <span className="text-ink-soft">Ventas en Bs</span>
@@ -175,9 +179,12 @@ export default async function DashboardPage() {
               </p>
             </div>
             <div className="rounded-2xl border border-teal-soft bg-teal-soft/30 p-6">
-              <p className="mb-3 font-mono text-[11px] uppercase tracking-widest text-[#215d4d]">
-                Cobra quien recibió en COP
-              </p>
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <p className="font-mono text-[11px] uppercase tracking-widest text-[#215d4d]">
+                  Cobra quien recibió en COP
+                </p>
+                <Personaje pais="ve" className="-mt-2 h-12 w-12 flex-none" />
+              </div>
               <div className="flex flex-col gap-1.5 text-[13px]">
                 <div className="flex items-baseline justify-between gap-3">
                   <span className="text-ink-soft">Ventas en COP</span>
@@ -200,9 +207,19 @@ export default async function DashboardPage() {
                 que todavia no es nadie: estos movimientos se pueden
                 aprobar, ajustar o desaprobar antes de liquidar. */}
             <div className="flex flex-col justify-between rounded-2xl bg-ink p-6 text-[#F3F1EA]">
-              <p className="font-mono text-[11px] uppercase tracking-widest text-[#D99A46]">
-                Neto provisorio
-              </p>
+              <div className="flex items-start justify-between gap-3">
+                <p className="font-mono text-[11px] uppercase tracking-widest text-[#D99A46]">
+                  Neto provisorio
+                </p>
+                {/* La corona va con quien queda a favor del neto. */}
+                {totalItems > 0 && previa.favor.lado !== "ninguno" && (
+                  <Personaje
+                    pais={previa.favor.lado === "bs" ? "co" : "ve"}
+                    lider
+                    className="-mt-2 h-12 w-12 flex-none"
+                  />
+                )}
+              </div>
 
               <div className="mt-3">
                 <p className="font-mono text-[12.5px] text-[#A9AE9F]">
