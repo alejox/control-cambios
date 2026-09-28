@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { formatFecha, formatMonto, type Item } from "@/lib/items";
 import { cobraCadaLado, favorDe, type Liquidacion } from "@/lib/liquidaciones";
 import ItemsTable, { type DepositoFila } from "../../items-table";
+import { Personaje } from "../../personaje";
 
 export default async function LiquidacionPage({
   params,
@@ -93,9 +94,12 @@ export default async function LiquidacionPage({
           imposible verificar a quien le toca. */}
       <div className="mb-8 grid gap-5 lg:grid-cols-[1fr_1fr_1.2fr]">
         <div className="rounded-2xl border border-accent-soft bg-accent-soft/30 p-6">
-          <p className="mb-3 font-mono text-[11px] uppercase tracking-widest text-[#8f5e1f]">
-            Cobra quien recibió en Bs
-          </p>
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <p className="font-mono text-[11px] uppercase tracking-widest text-[#8f5e1f]">
+              Cobra quien recibió en Bs
+            </p>
+            <Personaje pais="co" className="-mt-2 h-12 w-12 flex-none" />
+          </div>
           <div className="flex flex-col gap-1.5 text-[13px]">
             <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
               <span className="text-ink-soft">Ventas en Bs</span>
@@ -117,9 +121,12 @@ export default async function LiquidacionPage({
         </div>
 
         <div className="rounded-2xl border border-teal-soft bg-teal-soft/30 p-6">
-          <p className="mb-3 font-mono text-[11px] uppercase tracking-widest text-[#215d4d]">
-            Cobra quien recibió en COP
-          </p>
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <p className="font-mono text-[11px] uppercase tracking-widest text-[#215d4d]">
+              Cobra quien recibió en COP
+            </p>
+            <Personaje pais="ve" className="-mt-2 h-12 w-12 flex-none" />
+          </div>
           <div className="flex flex-col gap-1.5 text-[13px]">
             <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
               <span className="text-ink-soft">Ventas en COP</span>
@@ -141,9 +148,18 @@ export default async function LiquidacionPage({
         </div>
 
         <div className="flex flex-col justify-between rounded-2xl bg-ink p-6 text-[#F3F1EA]">
-          <p className="font-mono text-[11px] uppercase tracking-widest text-[#D99A46]">
-            Neto del corte
-          </p>
+          <div className="flex items-start justify-between gap-3">
+            <p className="font-mono text-[11px] uppercase tracking-widest text-[#D99A46]">
+              Neto del corte
+            </p>
+            {favor.lado !== "ninguno" && (
+              <Personaje
+                pais={favor.lado === "bs" ? "co" : "ve"}
+                lider
+                className="-mt-2 h-12 w-12 flex-none"
+              />
+            )}
+          </div>
 
           <div className="mt-3">
             <p className="font-mono text-[12.5px] text-[#A9AE9F]">
