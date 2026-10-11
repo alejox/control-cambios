@@ -130,7 +130,8 @@ alter table public.liquidaciones
   add column if not exists total_ventas numeric(14,2) not null default 0;
 
 -- ---------- Liquidar ----------
--- Misma función que la fase 16, con las ventas sumadas. Lo que no cambia:
+-- Misma función que la desplegada en producción (fase 16 + la guardia de
+-- movimientos sin aprobar), con las ventas sumadas. Lo que no cambia:
 --   * security invoker: la autorización la da RLS (solo admin escribe
 --     liquidaciones, items y ventas);
 --   * se capturan los IDS además de los totales, para sellar exactamente
@@ -161,7 +162,22 @@ declare
   v_venta_ids uuid[];
   v_cantidad_ventas integer;
   v_ventas numeric(14,2);
+  v_sin_revisar integer;
 begin
+  -- Guardia que vive en la base de producción pero en ninguna fase del
+  -- repo (se agregó a mano en el SQL Editor): no se liquida mientras quede
+  -- un movimiento sin aprobar. Se conserva tal cual. Las ventas no pasan
+  -- por aprobación, así que no cuentan acá.
+  select count(*) into v_sin_revisar
+    from public.items
+   where liquidacion_id is null and revisado_at is null;
+
+  if v_sin_revisar > 0 then
+    raise exception
+      'Faltan % movimiento(s) por aprobar. No se puede liquidar hasta que la contraparte revise todo.',
+      v_sin_revisar;
+  end if;
+
   select array_agg(id), count(*),
          coalesce(sum(usdt_total), 0),
          coalesce(sum(comision), 0),
