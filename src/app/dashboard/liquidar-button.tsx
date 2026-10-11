@@ -18,6 +18,8 @@ export default function LiquidarButton({
   usdtCop,
   comisionBs,
   comisionCop,
+  ventas = 0,
+  totalVentas = 0,
 }: {
   cantidad: number;
   /** Movimientos pendientes que la contraparte todavia no aprobo. */
@@ -26,6 +28,9 @@ export default function LiquidarButton({
   usdtCop: number;
   comisionBs: number;
   comisionCop: number;
+  /** Ventas de créditos pendientes: entran en el corte sumando al lado Bs. */
+  ventas?: number;
+  totalVentas?: number;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [state, formAction, pending] = useActionState<LiquidarState, FormData>(
@@ -41,11 +46,13 @@ export default function LiquidarButton({
     usdt_cop: usdtCop,
     comision_bs: comisionBs,
     comision_cop: comisionCop,
+    total_ventas: totalVentas,
   });
   // No se liquida con algo sin aprobar: seria cerrar cuentas sobre montos
   // que la contraparte nunca confirmo. La base tambien lo rechaza; esto es
   // para que no haya que llegar al error para enterarse.
-  const puede = cantidad > 0 && sinAprobar === 0;
+  // Un corte puede saldar solo ventas de créditos, sin movimientos.
+  const puede = (cantidad > 0 || ventas > 0) && sinAprobar === 0;
   const hoy = new Date().toISOString().slice(0, 10);
 
   return (
@@ -55,11 +62,13 @@ export default function LiquidarButton({
         disabled={!puede}
         onClick={() => dialogRef.current?.showModal()}
         title={
-          cantidad === 0
+          cantidad === 0 && ventas === 0
             ? "No hay movimientos pendientes"
             : sinAprobar > 0
               ? `Faltan ${sinAprobar} por aprobar`
-              : `Liquidar ${cantidad} movimientos`
+              : ventas > 0
+                ? `Liquidar ${cantidad} movimientos y ${ventas} ventas de créditos`
+                : `Liquidar ${cantidad} movimientos`
         }
         className="h-10 rounded-[10px] border border-teal bg-teal-soft/50 px-4 text-sm font-medium text-[#215d4d] transition hover:bg-teal-soft disabled:cursor-not-allowed disabled:opacity-40"
       >
@@ -83,6 +92,7 @@ export default function LiquidarButton({
               style={{ fontFamily: "var(--font-display)" }}
             >
               Liquidar {cantidad} movimiento{cantidad === 1 ? "" : "s"}
+              {ventas > 0 && ` y ${ventas} venta${ventas === 1 ? "" : "s"}`}
             </h2>
           </div>
 
@@ -103,6 +113,12 @@ export default function LiquidarButton({
                   <span className="text-ink-soft">Comisiones en COP</span>
                   <span className="text-teal">+ {formatMonto(comisionCop, "USDT")}</span>
                 </div>
+                {totalVentas > 0 && (
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-ink-soft">Ventas de créditos</span>
+                    <span className="text-teal">+ {formatMonto(totalVentas, "USDT")}</span>
+                  </div>
+                )}
               </div>
               <p className="mt-1 border-t border-accent-soft pt-2 text-[15px] font-medium text-ink">
                 {formatMonto(cobra.bs, "USDT")}
@@ -183,7 +199,7 @@ export default function LiquidarButton({
 
             <p className="text-[12px] leading-relaxed text-ink-soft">
               Estos montos quedan congelados en la liquidación y los movimientos
-              salen de la tabla de pendientes.
+              {ventas > 0 && " y las ventas de créditos"} salen de pendientes.
             </p>
 
             {state.error && <p className="text-[13px] text-critical">{state.error}</p>}

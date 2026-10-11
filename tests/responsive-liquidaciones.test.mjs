@@ -27,7 +27,9 @@ test("liquidacion detail stacks summary labels and amounts on narrow screens", (
   const filaResumen =
     /flex flex-col gap-0\.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3/g;
 
-  assert.equal([...detalleLiquidacion.matchAll(filaResumen)].length, 4);
+  // Ventas en Bs, Comisiones en COP, Ventas de créditos, Ventas en COP,
+  // Comisiones en Bs.
+  assert.equal([...detalleLiquidacion.matchAll(filaResumen)].length, 5);
 });
 
 test("items switch to cards until the content channel can fit the semantic table", () => {

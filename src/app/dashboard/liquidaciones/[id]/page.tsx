@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { formatFecha, formatMonto, type Item } from "@/lib/items";
 import { cobraCadaLado, favorDe, type Liquidacion } from "@/lib/liquidaciones";
+import { COLUMNAS_VENTA, type Venta } from "@/lib/ventas";
 import ItemsTable, { type DepositoFila } from "../../items-table";
 import { Personaje } from "../../personaje";
 
@@ -44,6 +45,16 @@ export default async function LiquidacionPage({
     .order("numero", { ascending: true });
 
   const items = (datosItems ?? []) as Item[];
+
+  // Las ventas de créditos que entraron en este corte. El total que manda
+  // es total_ventas, congelado en la fila; la lista es el detalle.
+  const { data: datosVentas } = await supabase
+    .from("ventas")
+    .select(COLUMNAS_VENTA)
+    .eq("liquidacion_id", id)
+    .order("fecha", { ascending: true });
+  const ventas = (datosVentas ?? []) as Venta[];
+  const totalVentas = Number(liquidacion.total_ventas ?? 0);
 
   // Cada flujo aporta sus ventas menos su comision; el neto es la resta.
   // Cada lado cobra sus ventas MAS la comision que le genera el otro.
@@ -111,6 +122,12 @@ export default async function LiquidacionPage({
                 + {formatMonto(liquidacion.comision_cop, "USDT")}
               </span>
             </div>
+            {totalVentas > 0 && (
+              <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
+                <span className="text-ink-soft">Ventas de créditos</span>
+                <span className="text-teal">+ {formatMonto(totalVentas, "USDT")}</span>
+              </div>
+            )}
           </div>
           <p
             className="mt-3 border-t border-accent-soft pt-3 text-2xl font-medium text-ink"
@@ -203,6 +220,37 @@ export default async function LiquidacionPage({
             contraparte lo revisara. Los montos entraron igual en el total.
           </p>
         </div>
+      )}
+
+      {(totalVentas > 0 || ventas.length > 0) && (
+        <section className="mb-8 rounded-2xl border border-border bg-surface shadow-sm">
+          <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-border px-5 py-4">
+            <h2 className="text-[15px] font-medium text-ink">
+              {ventas.length} venta{ventas.length === 1 ? "" : "s"} de créditos en este corte
+            </h2>
+            <p className="font-mono text-[12px] text-ink">
+              Total {formatMonto(totalVentas, "USDT")}
+            </p>
+          </div>
+          <ul className="divide-y divide-border">
+            {ventas.map((v) => (
+              <li
+                key={v.id}
+                className="flex flex-col gap-1 px-5 py-3 text-[13.5px] sm:flex-row sm:items-center sm:gap-4"
+              >
+                <span className="w-24 flex-none font-mono text-[12.5px] text-ink-soft">
+                  {formatFecha(v.fecha)}
+                </span>
+                <span className="w-32 flex-none font-medium text-ink">
+                  {formatMonto(Number(v.usdt), "USDT")}
+                </span>
+                <span className="min-w-0 flex-1 break-words text-ink-soft">
+                  {v.descripcion ?? "—"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3">

@@ -28,20 +28,26 @@ export default function EscuchaMovimientos() {
   useEffect(() => {
     const supabase = createClient();
     let pendiente: ReturnType<typeof setTimeout> | null = null;
+    const refrescar = () => {
+      if (pendiente) clearTimeout(pendiente);
+      pendiente = setTimeout(() => {
+        pendiente = null;
+        router.refresh();
+      }, ESPERA_MS);
+    };
 
     const canal = supabase
       .channel("movimientos")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "items" },
-        () => {
-          if (pendiente) clearTimeout(pendiente);
-          pendiente = setTimeout(() => {
-            pendiente = null;
-            router.refresh();
-          }, ESPERA_MS);
-        },
-      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "items" }, refrescar)
+      .subscribe();
+
+    // Una venta de créditos cambia el neto pendiente igual que un
+    // movimiento (la fase 50 la publica con el mismo criterio). Va en un
+    // canal APARTE: si la tabla todavía no está publicada, Realtime rechaza
+    // la suscripción entera, y no puede llevarse puesta la de items.
+    const canalVentas = supabase
+      .channel("ventas")
+      .on("postgres_changes", { event: "*", schema: "public", table: "ventas" }, refrescar)
       .subscribe();
 
     return () => {
@@ -49,6 +55,7 @@ export default function EscuchaMovimientos() {
       // Sin esto, cada navegación dejaría un canal abierto: las conexiones
       // se acumularían hasta chocar contra el límite del plan.
       supabase.removeChannel(canal);
+      supabase.removeChannel(canalVentas);
     };
   }, [router]);
 

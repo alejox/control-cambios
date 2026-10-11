@@ -9,6 +9,8 @@ import RecalcularComisiones from "./recalcular-comisiones";
 import { COMISION_PCT_FALLBACK, leerComisiones } from "@/lib/configuracion";
 import { formatMonto, resumirRecalculo, type Item } from "@/lib/items";
 import { previaDeCorte } from "@/lib/liquidaciones";
+import { COLUMNAS_VENTA, sumarVentas, type Venta } from "@/lib/ventas";
+import VentasCredito from "./ventas/ventas-credito";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -46,6 +48,23 @@ export default async function DashboardPage() {
     items = data ?? [];
   }
 
+  // Las ventas de créditos pendientes: entran en el próximo corte igual que
+  // los movimientos, sumando a lo que cobra el lado Bs.
+  let ventas: Venta[] = [];
+  if (puedeVer) {
+    const { data } = await supabase
+      .from("ventas")
+      .select(COLUMNAS_VENTA)
+      .is("liquidacion_id", null)
+      .order("fecha", { ascending: false })
+      .order("created_at", { ascending: false });
+    ventas = (data ?? []) as Venta[];
+  }
+  const totalVentas = sumarVentas(ventas);
+  // Hay algo que liquidar si hay movimientos O ventas: un corte puede
+  // saldar solo ventas.
+  const hayPendiente = items.length > 0 || ventas.length > 0;
+
   const totalItems = items.length;
   const totalUsdtBs = items
     .filter((i) => i.tipo_flujo === "bs_a_usdt")
@@ -70,6 +89,7 @@ export default async function DashboardPage() {
     usdt_cop: totalUsdtCop,
     comision_bs: comisionBs,
     comision_cop: comisionCop,
+    total_ventas: totalVentas,
   });
 
   // Sin permiso para ver no se consulta la configuracion: RLS la taparia
@@ -170,6 +190,12 @@ export default async function DashboardPage() {
                   <span className="text-ink-soft">Comisiones en COP</span>
                   <span className="text-teal">+ {formatMonto(comisionCop, "USDT")}</span>
                 </div>
+                {totalVentas > 0 && (
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-ink-soft">Ventas de créditos</span>
+                    <span className="text-teal">+ {formatMonto(totalVentas, "USDT")}</span>
+                  </div>
+                )}
               </div>
               <p
                 className="mt-3 border-t border-accent-soft pt-3 text-2xl font-medium text-ink"
@@ -212,7 +238,7 @@ export default async function DashboardPage() {
                   Neto provisorio
                 </p>
                 {/* La corona va con quien queda a favor del neto. */}
-                {totalItems > 0 && previa.favor.lado !== "ninguno" && (
+                {hayPendiente && previa.favor.lado !== "ninguno" && (
                   <Personaje
                     pais={previa.favor.lado === "bs" ? "co" : "ve"}
                     lider
@@ -236,7 +262,7 @@ export default async function DashboardPage() {
               </div>
 
               <p className="mt-3 flex items-center gap-2 text-[12.5px] text-[#A9AE9F]">
-                {totalItems > 0 && previa.favor.lado !== "ninguno" && (
+                {hayPendiente && previa.favor.lado !== "ninguno" && (
                   <span
                     className={`h-2 w-2 flex-none rounded-full ${
                       previa.favor.lado === "bs" ? "bg-[#D99A46]" : "bg-[#7FCBAE]"
@@ -244,7 +270,7 @@ export default async function DashboardPage() {
                     aria-hidden
                   />
                 )}
-                {totalItems === 0 ? "No hay nada pendiente" : previa.favor.frase}
+                {hayPendiente ? previa.favor.frase : "No hay nada pendiente"}
               </p>
 
               <p className="mt-2 text-[11.5px] leading-relaxed text-[#A9AE9F]">
@@ -283,6 +309,8 @@ export default async function DashboardPage() {
                   usdtCop={totalUsdtCop}
                   comisionBs={comisionBs}
                   comisionCop={comisionCop}
+                  ventas={ventas.length}
+                  totalVentas={totalVentas}
                 />
               )}
               {puedeVer && (
@@ -295,6 +323,8 @@ export default async function DashboardPage() {
               )}
             </div>
           </div>
+
+          <VentasCredito ventas={ventas} total={totalVentas} esAdmin={esAdmin} />
 
           <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
             <ItemsTable
