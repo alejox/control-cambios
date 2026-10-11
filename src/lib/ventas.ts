@@ -43,19 +43,20 @@ export function siguienteNumeroPendiente(
 
 /**
  * Lo que dice la tarjeta "Movimientos" del panel. El número grande cuenta
- * solo los movimientos pendientes (items); las ventas de créditos —- el
- * "canje de créditos" -— van en su propia línea y solo si hay alguna, para
- * que el número coincida con los movimientos reales. El estado de
- * aprobación es solo de items: las ventas no pasan por aprobación.
+ * todo lo pendiente: items y ventas de créditos (el "canje de créditos"),
+ * que comparten la numeración, así que coincide con el último número de la
+ * lista. El desglose de canjes va en su propia línea y solo si hay alguno.
+ * El estado de aprobación es solo de items: las ventas no pasan por
+ * aprobación.
  */
 export function resumenTarjetaMovimientos(
   items: { revisado_at: string | null }[],
   ventasPendientes: number,
 ) {
-  const movimientos = items.length;
+  const movimientos = items.length + ventasPendientes;
   const sinAprobar = items.filter((i) => i.revisado_at === null).length;
   const estado =
-    movimientos > 0
+    items.length > 0
       ? sinAprobar > 0
         ? `${sinAprobar} sin aprobar`
         : "Todos aprobados"
