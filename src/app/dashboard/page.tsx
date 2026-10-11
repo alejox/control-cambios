@@ -11,6 +11,7 @@ import { formatMonto, resumirRecalculo, type Item } from "@/lib/items";
 import { previaDeCorte } from "@/lib/liquidaciones";
 import {
   COLUMNAS_VENTA,
+  resumenTarjetaMovimientos,
   siguienteNumeroPendiente,
   sumarVentas,
   type Venta,
@@ -77,10 +78,10 @@ export default async function DashboardPage() {
     items.map((i) => i.numero),
     ventas.map((v) => v.numero),
   );
-  // La tarjeta cuenta las ventas como movimientos: están en la misma lista
-  // y con número propio. "Sin aprobar" sigue siendo solo de items, porque
-  // las ventas no pasan por aprobación.
-  const totalMovimientos = totalItems + ventas.length;
+  // La tarjeta cuenta solo los movimientos (items); las ventas pendientes
+  // van aparte como "Canje de créditos: N". "Sin aprobar" sigue siendo solo
+  // de items, porque las ventas no pasan por aprobación.
+  const tarjetaMovimientos = resumenTarjetaMovimientos(items, ventas.length);
   const totalUsdtBs = items
     .filter((i) => i.tipo_flujo === "bs_a_usdt")
     .reduce((acc, i) => acc + Number(i.usdt_total), 0);
@@ -179,15 +180,14 @@ export default async function DashboardPage() {
                 Movimientos
               </p>
               <p className="text-2xl font-medium text-ink" style={{ fontFamily: "var(--font-display)" }}>
-                {totalMovimientos}
+                {tarjetaMovimientos.movimientos}
               </p>
-              <p className="mt-1 text-[12.5px] text-ink-soft">
-                {totalMovimientos === 0
-                  ? "Nada que liquidar"
-                  : sinAprobar > 0
-                    ? `${sinAprobar} sin aprobar`
-                    : "Todos aprobados"}
-              </p>
+              {tarjetaMovimientos.estado && (
+                <p className="mt-1 text-[12.5px] text-ink-soft">{tarjetaMovimientos.estado}</p>
+              )}
+              {tarjetaMovimientos.canjes && (
+                <p className="mt-1 text-[12.5px] text-ink-soft">{tarjetaMovimientos.canjes}</p>
+              )}
             </div>
             <div className="rounded-2xl border border-accent-soft bg-accent-soft/30 p-6">
               <div className="mb-3 flex items-start justify-between gap-3">

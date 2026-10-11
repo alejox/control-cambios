@@ -31,7 +31,7 @@ removes the external payment.
 
 - [x] T4 Ventas share movement numbering and appear in the movements list (user request: the 69 USDT venta is movement #44). Route: delegated (writer trigger: SQL + list + form + actions).
 
-- [ ] T5 Contiguous numbering: deleting a pending item/venta shifts later numbers down by 1 (shared series); one-time compaction closes existing gap (#33). Movements card shows items count + "Canje de créditos: N". Branch feat/renumerar-movimientos. Route: delegated.
+- [x] T5 Contiguous numbering: deleting a pending item/venta shifts later numbers down by 1 (shared series); one-time compaction closes existing gap (#33). Movements card shows items count + "Canje de créditos: N". Branch feat/renumerar-movimientos. Route: delegated.
 
 ## Acceptance criteria
 - A 69 USDT venta raises the pending net by 69 in favor of the Bs side.
@@ -53,5 +53,8 @@ Strategy: ask-on-risk. Forecast: ~400–500 authored lines.
 
 - Applied phase51 to production via Supabase MCP (2026-10-11, no-op drop triggers stripped): venta "30 Creditos Stella" = #44, 2 cross-table triggers, 2 unique indexes, bot numbers over items+ventas, bot grant service_role only. Security advisors: no new findings.
 
+- T5: `supabase/phase52_numeracion_continua.sql` (commit `c405748`): `compactar_numeracion_pendiente()` (security definer, advisory lock `items.numero.pendiente`) walks pending items+ventas in ascending numero and assigns positions 1..N one row at a time, so the non-deferrable unique partial indexes and the phase51 cross-table triggers never see a duplicate (no negative offsets, `ventas.numero > 0` respected); AFTER DELETE row triggers `items_renumerar_tras_borrar` / `ventas_renumerar_tras_borrar` (`when old.liquidacion_id is null`, `create or replace trigger`, no drops) call it, which also handles multi-row deletes; one-time `select compactar_numeracion_pendiente()` closes the #33 gap (venta #44 -> #43). Trigger audit: items has only `items_liquidados_inmutables` (passes pending rows) and `items_numero_unico_con_ventas`; no trigger resets `revisado_at` (approval changes live only in RPCs), so renumbering keeps approvals. Check: structural readback only (hand-run SQL, no local Postgres); must be applied in the SQL Editor / MCP. Dashboard: `resumenTarjetaMovimientos` in `src/lib/ventas.ts`; the "Movimientos" card counts pending items only, keeps the approval line (items only; hidden when only ventas are pending) and adds "Canje de créditos: N" when N > 0. Delete actions unchanged (admin-only RLS delete + revalidatePath). RED: `npm test` 5 failing in `tests/tarjeta-movimientos.test.mjs` (`resumenTarjetaMovimientos is not a function`). GREEN: `npm test` 75 pass / 0 fail; `npm run lint` pass; `npm run build` pass. Commits `c405748` (db) + dashboard commit (this one).
+- Open note: the web new-item form proposes max+1 at render; if a delete happens while a form is open, saving the stale number leaves a gap until the next delete compacts. Not addressed in T5.
+
 ## Next step
-T5.
+Apply phase52 to production, then verify pending numbering is 1..43.
