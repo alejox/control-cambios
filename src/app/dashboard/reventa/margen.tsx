@@ -1,5 +1,6 @@
 "use client";
 
+import { IconoPorcentaje } from "./iconos";
 import { leerNumero } from "./tasas";
 import { CLASE_CONTROL, CLASE_ETIQUETA } from "./ui";
 
@@ -32,7 +33,10 @@ export default function ControlMargen({
 
   return (
     <div className="flex flex-col gap-2">
-      <label htmlFor={id} className={CLASE_ETIQUETA}>
+      <label htmlFor={id} className={`${CLASE_ETIQUETA} flex items-center gap-1.5`}>
+        <span className="flex h-5 w-5 items-center justify-center rounded-[6px] bg-accent-soft text-[#8f5e1f]">
+          <IconoPorcentaje className="h-3 w-3" />
+        </span>
         {etiqueta}
       </label>
       <div className="flex items-center gap-2">

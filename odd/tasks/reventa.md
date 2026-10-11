@@ -43,7 +43,7 @@ markup math by hand.
   `/api/tasa-referencia` (overridable, reset/retry), copyable quote, margin kept in
   localStorage.
 - [x] T3 WhatsApp price list per currency (primary deliverable, mirrors Venta público). Route: delegated.
-  Commit: this commit (`feat(reventa): generate WhatsApp price lists per currency`).
+  Commit: 25433e1 (`feat(reventa): generate WhatsApp price lists per currency`).
   RED: 11 failing in `tests/reventa.test.mjs` (`listadoWhatsApp` missing + round-up expectations).
   GREEN: 20/20 reventa tests; `npm test` 95/95; `npm run lint` exit 0; `npm run build` exit 0.
   `listadoWhatsApp({ proveedor, moneda: "VES"|"USD"|"COP", margenPct, tasa, mediosPago })` in
@@ -57,6 +57,19 @@ markup math by hand.
   Decision: sale rounding switched to ALWAYS UP (Venta público rule) for list and calculator:
   totals COP 1.000 / Bs 10 / USD 0,01; per-credit COP 10 / Bs 1 / USD 0,01, derived from the
   rounded total. Catalog stays static (no DB/editor).
+- [x] T4 Eye-catching WhatsApp lists and page; Oleada note without "soporte activo". Route: delegated.
+  Commit: this commit (`feat(reventa): make WhatsApp lists and the page more eye-catching`).
+  RED: 9 failing in `tests/reventa.test.mjs` after updating expectations to the new format.
+  GREEN: 21/21 reventa tests; `npm test` 96/96; `npm run lint`, `npx tsc --noEmit`,
+  `npm run build` exit 0.
+  Message: 📺 bold provider + _Créditos para revendedores_ + flag currency line (🇺🇸/🇨🇴/🇻🇪),
+  ━ separators, 📺📱/📱 variant headings, ⚡ loose recharge, 💎 tiers with bold credits and price,
+  🆕/⭐/👑 panel tags, 🔥 Mejor precio (per variant, decided in USDT), 📌 Condiciones with ✅,
+  💬 closing call to action, then payment methods.
+  UI: inline SVG icons (`reventa/iconos.tsx`, sidebar style) and small SVG flags on the
+  currency switch; provider tabs with initial badges; dark panel header with WhatsApp badge,
+  currency chip and stat pills; icon labels on margin/rate/payment methods; chat-style preview
+  (header bar, dotted background, bubble tail, "ahora" + double check); WhatsApp-green button.
 
 ## Acceptance criteria
 - All four lists render exactly as provided, grouped by variant, with panel badges.
@@ -64,7 +77,7 @@ markup math by hand.
 - `npm test`, `npm run lint`, `npm run build` pass.
 
 ## Progress / Evidence
-T1, T2 and T3 done (see tasks). TeleLatino "Un dispositivo" 300/500 still flagged TODO(precio).
+T1–T4 done (see tasks). TeleLatino "Un dispositivo" 300/500 still flagged TODO(precio).
 
 ## Next step
 User confirms TeleLatino 300/500 prices and reviews the page in the browser.

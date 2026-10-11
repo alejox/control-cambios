@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { FuenteTasa, RespuestaReferencia } from "@/app/api/tasa-referencia/route";
 import { formatMargen } from "@/lib/venta-publico";
+import { IconoCambio, IconoRefrescar } from "./iconos";
 import { CLASE_CONTROL, fmt2 } from "./ui";
 
 // Las tasas de referencia de la sección: las piden una sola vez arriba de
@@ -89,7 +90,10 @@ export function FilaTasa({
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-baseline justify-between gap-2">
-        <label htmlFor={id} className="text-[13px] font-medium text-ink">
+        <label htmlFor={id} className="flex items-center gap-1.5 text-[13px] font-medium text-ink">
+          <span className="flex h-5 w-5 items-center justify-center rounded-[6px] bg-teal-soft text-[#215d4d]">
+            <IconoCambio className="h-3 w-3" />
+          </span>
           {moneda}
         </label>
         <span className="font-mono text-[10.5px] uppercase tracking-wider text-ink-soft">
@@ -117,8 +121,9 @@ export function FilaTasa({
             type="button"
             onClick={onRestablecer}
             title="Volver a la tasa de referencia"
-            className="h-10 flex-none rounded-[10px] border border-border bg-surface px-3 text-[12.5px] text-ink-soft transition hover:text-ink"
+            className="inline-flex h-10 flex-none items-center gap-1.5 rounded-[10px] border border-border bg-surface px-3 text-[12.5px] text-ink-soft transition hover:text-ink"
           >
+            <IconoRefrescar className="h-3.5 w-3.5" />
             {estado.estado === "error" ? "Reintentar" : "Restablecer"}
           </button>
         )}

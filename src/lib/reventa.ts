@@ -134,7 +134,7 @@ export const PROVEEDORES: Proveedor[] = [
       },
     ],
     paneles: [],
-    notas: ["Apertura de panel inmediata y soporte activo."],
+    notas: ["Apertura de panel inmediata."],
   },
   {
     id: "flujotv",
@@ -428,7 +428,23 @@ export function textoCotizacion({
  */
 const PASO_POR_CREDITO: Record<"VES" | "COP", number> = { VES: 1, COP: 10 };
 
-const SEPARADOR = "──────────────";
+const SEPARADOR = "━━━━━━━━━━━━━━";
+
+// El sistema de íconos del mensaje. Uno por TIPO de línea y siempre el
+// mismo: en un chat el ojo busca el ícono antes que el texto, y si cada
+// lista usara los suyos el revendedor tendría que aprender cada una.
+const ICONO_MONEDA: Record<MonedaLista, string> = { USD: "🇺🇸", COP: "🇨🇴", VES: "🇻🇪" };
+const ICONO_PANEL: Record<string, string> = {
+  "Panel nuevo": "🆕",
+  "Super panel": "⭐",
+  "Admin panel": "👑",
+};
+const CIERRE = "💬 Escríbeme con la cantidad que deseas recargar.";
+
+/** 📺📱 para varias pantallas, 📱 para una sola. */
+function iconoVariante(variante: Variante) {
+  return variante.id === "multi" ? "📺📱" : "📱";
+}
 
 /** Un precio de la lista en su moneda: Bs/COP sin decimales, USD con dos. */
 function montoListado(valor: number, moneda: MonedaLista) {
@@ -499,7 +515,11 @@ export function listadoWhatsApp({
   if (factor === null || !Number.isFinite(factor) || factor <= 0) return null;
 
   const bloques = [
-    `*${proveedor.nombre} · Créditos para revendedores*\nPrecios en ${NOMBRE_MONEDA[moneda]} (${ETIQUETA_MONEDA[moneda]})`,
+    [
+      `📺 *${proveedor.nombre}*`,
+      "_Créditos para revendedores_",
+      `${ICONO_MONEDA[moneda]} *Precios en ${NOMBRE_MONEDA[moneda]} (${ETIQUETA_MONEDA[moneda]})*`,
+    ].join("\n"),
     SEPARADOR,
   ];
 
@@ -512,31 +532,40 @@ export function listadoWhatsApp({
       const venta = aplicarMargen(s.precioUsdt, margenPct);
       const unidad = porCreditoEn(moneda === "USD" ? venta : convertir(venta, factor), moneda);
       lineas.push(
-        `🔸 Recarga suelta de ${s.min} a ${s.max} créditos ➜ ${montoPorCredito(unidad, moneda)} c/u`,
+        `⚡ *Recarga suelta:* ${s.min} a ${s.max} créditos ➜ *${montoPorCredito(unidad, moneda)}* c/u`,
       );
     }
     const paneles = iniciosDePanel(proveedor, variante);
+    // El mejor precio se decide en USDT, con el precio del proveedor: el
+    // redondeo de la moneda no debería cambiar cuál paquete conviene.
+    const mejor = mejorTramo(variante).creditos;
     for (const t of variante.tramos) {
       const total = precioEn(t.totalUsdt, moneda, margenPct, factor);
       const cu = porCreditoEn(total / t.creditos, moneda);
       const panel = paneles.get(t.creditos);
+      const marcas = [
+        ...(panel ? [`${ICONO_PANEL[panel] ?? "🔹"} _${panel}_`] : []),
+        ...(t.creditos === mejor ? ["🔥 *Mejor precio*"] : []),
+      ];
       lineas.push(
-        `🔹 ${t.creditos.toLocaleString("es-VE")} créditos ➜ ${montoListado(total, moneda)} (${montoPorCredito(cu, moneda)} c/u)${
-          panel ? ` · *${panel}*` : ""
-        }`,
+        `💎 *${t.creditos.toLocaleString("es-VE")} créditos* ➜ *${montoListado(total, moneda)}* (${montoPorCredito(cu, moneda)} c/u)${marcas
+          .map((m) => ` · ${m}`)
+          .join("")}`,
       );
     }
 
     const etiqueta = etiquetaVariante(variante);
     const titulo = etiqueta
-      ? [`📺 *${etiqueta}*`, ...(variante.equipos ? [`_${variante.equipos}_`] : [])].join("\n")
+      ? [`${iconoVariante(variante)} *${etiqueta}*`, ...(variante.equipos ? [`_${variante.equipos}_`] : [])].join("\n")
       : null;
     bloques.push(titulo ? `${titulo}\n\n${lineas.join("\n")}` : lineas.join("\n"));
   }
 
+  bloques.push(SEPARADOR);
   if (proveedor.notas.length > 0) {
-    bloques.push(SEPARADOR, proveedor.notas.map((n) => `✅ ${n}`).join("\n"));
+    bloques.push(["📌 *Condiciones*", ...proveedor.notas.map((n) => `✅ ${n}`)].join("\n"));
   }
+  bloques.push(CIERRE);
 
   const medios = mediosPago.trim();
   if (medios) bloques.push(medios);
