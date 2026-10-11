@@ -27,7 +27,7 @@ removes the external payment.
 ## Tasks
 - [x] T1 SQL phase50: ventas table, RLS, immutability, liquidaciones.total_ventas, liquidar_pendientes with ventas. Route: delegated (writer trigger: multi-file feature).
 - [x] T2 TS math: include ventas in `cobraCadaLado`/`previaDeCorte`, with node:test RED→GREEN. Route: delegated.
-- [ ] T3 UI: create/delete venta (admin), pending list on dashboard, liquidate dialog, liquidation detail. Route: delegated.
+- [x] T3 UI: create/delete venta (admin), pending list on dashboard, liquidate dialog, liquidation detail. Route: delegated.
 
 ## Acceptance criteria
 - A 69 USDT venta raises the pending net by 69 in favor of the Bs side.
@@ -40,7 +40,8 @@ Strategy: ask-on-risk. Forecast: ~400–500 authored lines.
 
 ## Progress / Evidence
 - T1: `supabase/phase50_ventas_credito.sql` written (table, RLS, immutability trigger, `liquidaciones.total_ventas`, `liquidar_pendientes` with ventas, realtime). Check: structural readback only (hand-run SQL, no local Postgres). Must be run manually in the Supabase SQL Editor. Commit `dd576e0`.
-- T2: optional `total_ventas` in `cobraCadaLado`/`previaDeCorte` (bs += ventas); `Liquidacion.total_ventas`. RED: `npm test` 3 failing in `tests/liquidacion-ventas.test.mjs` (actual 151 vs expected 220; -108 vs 42; 151 vs 220.5). GREEN: `npm test` 62 pass, 0 fail.
+- T2: optional `total_ventas` in `cobraCadaLado`/`previaDeCorte` (bs += ventas); `Liquidacion.total_ventas`. RED: `npm test` 3 failing in `tests/liquidacion-ventas.test.mjs` (actual 151 vs expected 220; -108 vs 42; 151 vs 220.5). GREEN: `npm test` 62 pass, 0 fail. Commit `d0c732f`.
+- T3: `src/lib/ventas.ts`, `src/app/dashboard/ventas/{actions.ts,ventas-credito.tsx}` (admin-only "Generar venta" button in the list header opens a dialog; closes on success; colaborador read-only), dashboard pending net + Bs card line, liquidate dialog line (cut with only ventas allowed), detail page frozen `total_ventas` + list, separate realtime channel for `ventas`. `tests/responsive-liquidaciones.test.mjs` expected detail summary rows 4 -> 5 (parent-approved). Checks: `npm test` 62 pass / 0 fail; `npm run lint` pass; `npm run build` pass. List page needed no change: `cobraCadaLado(l)` reads the row's `total_ventas`.
 
 ## Next step
-T3.
+User runs `supabase/phase50_ventas_credito.sql` in the Supabase SQL Editor (after parent patch), then smoke-test a 69 USDT venta.
