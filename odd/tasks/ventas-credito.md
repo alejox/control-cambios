@@ -43,5 +43,7 @@ Strategy: ask-on-risk. Forecast: ~400–500 authored lines.
 - T2: optional `total_ventas` in `cobraCadaLado`/`previaDeCorte` (bs += ventas); `Liquidacion.total_ventas`. RED: `npm test` 3 failing in `tests/liquidacion-ventas.test.mjs` (actual 151 vs expected 220; -108 vs 42; 151 vs 220.5). GREEN: `npm test` 62 pass, 0 fail. Commit `d0c732f`.
 - T3: `src/lib/ventas.ts`, `src/app/dashboard/ventas/{actions.ts,ventas-credito.tsx}` (admin-only "Generar venta" button in the list header opens a dialog; closes on success; colaborador read-only), dashboard pending net + Bs card line, liquidate dialog line (cut with only ventas allowed), detail page frozen `total_ventas` + list, separate realtime channel for `ventas`. `tests/responsive-liquidaciones.test.mjs` expected detail summary rows 4 -> 5 (parent-approved). Checks: `npm test` 62 pass / 0 fail; `npm run lint` pass; `npm run build` pass. List page needed no change: `cobraCadaLado(l)` reads the row's `total_ventas`.
 
+- Applied phase50 to production via Supabase MCP (2026-10-11): RLS on, 4 policies, trigger, total_ventas, guard kept, ventas in net, grant ok, realtime ok. Security advisors: no new findings for ventas.
+
 ## Next step
 User runs `supabase/phase50_ventas_credito.sql` in the Supabase SQL Editor (after parent patch), then smoke-test a 69 USDT venta.
