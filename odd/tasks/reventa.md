@@ -26,13 +26,22 @@ markup math by hand.
 
 ## Tasks
 - [x] T1 Catalog + pricing helpers + tests (RED→GREEN). Route: delegated.
-  Commit: this commit (`feat(reventa): add the resale price catalog and pricing helpers`).
+  Commit: 8c3c98d (`feat(reventa): add the resale price catalog and pricing helpers`).
   RED: `tests/reventa.test.mjs` failed (module `src/lib/reventa.ts` missing).
   GREEN: 12/12 reventa tests; `npm test` 87/87; eslint clean on the new files.
   Rules: per-credit is derived (total/credits); custom quantity = exact tier, or loose
   price for 1–29 when the variant has one, otherwise no price (null, no prorating);
   sale rounding to nearest COP 1.000 / VES 10 / USDT 0,01.
-- [ ] T2 Reventa page (lists design) + calculator + sidebar. Route: delegated.
+- [x] T2 Reventa page (lists design) + calculator + sidebar. Route: delegated.
+  Commit: this commit (`feat(reventa): add the resale section with price lists and calculator`).
+  Checks: `npm test` 87/87; `npm run lint` exit 0; `npm run build` exit 0 (`/dashboard/reventa`).
+  Test-first exception: UI only, no runnable component tests in the repo; pricing logic is
+  covered by T1. Not checked in a browser (needs a logged-in session).
+  Design: provider segmented switcher (with "desde X c/u"), one card per variant (side by side
+  at 2xl), tier rows laid out by container query, per-credit bar, panel badge where the panel
+  starts, "Mejor precio", loose-recharge chip; sticky calculator on lg+ with rates from
+  `/api/tasa-referencia` (overridable, reset/retry), copyable quote, margin kept in
+  localStorage.
 
 ## Acceptance criteria
 - All four lists render exactly as provided, grouped by variant, with panel badges.
@@ -40,7 +49,7 @@ markup math by hand.
 - `npm test`, `npm run lint`, `npm run build` pass.
 
 ## Progress / Evidence
-(pending)
+T1 and T2 done (see tasks). TeleLatino "Un dispositivo" 300/500 still flagged TODO(precio).
 
 ## Next step
-T1.
+User confirms TeleLatino 300/500 prices and reviews the page in the browser.

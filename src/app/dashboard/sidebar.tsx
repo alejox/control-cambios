@@ -55,6 +55,13 @@ const IconoVenta = (
   </svg>
 );
 
+const IconoReventa = (
+  <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden>
+    <path d="M8 1.9 14.1 5 8 8.1 1.9 5 8 1.9Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+    <path d="M1.9 8 8 11.1 14.1 8M1.9 11 8 14.1 14.1 11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
 const IconoPaneles = (
   <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden>
     <circle cx="5.4" cy="8" r="2.7" stroke="currentColor" strokeWidth="1.3" />
@@ -82,6 +89,9 @@ const ENTRADAS: Entrada[] = [
   // Sin soloAdmin: la lista de precios la ven los dos roles. Editarla es
   // otra cosa, y eso lo corta RLS en la base.
   { href: "/dashboard/venta-publico", etiqueta: "Venta público", corta: "Venta", icono: IconoVenta },
+  // Las listas mayoristas son referencia de los dos roles, igual que
+  // Venta público: no hay nada que editar ni que proteger por rol.
+  { href: "/dashboard/reventa", etiqueta: "Reventa", corta: "Reventa", icono: IconoReventa },
   // Sin soloAdmin: cada uno guarda los suyos y no ve los del otro. Eso no
   // lo decide el menú, lo corta RLS en la tabla.
   { href: "/dashboard/paneles", etiqueta: "Mis paneles", corta: "Paneles", icono: IconoPaneles },
