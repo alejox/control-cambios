@@ -29,6 +29,8 @@ removes the external payment.
 - [x] T2 TS math: include ventas in `cobraCadaLado`/`previaDeCorte`, with node:test RED→GREEN. Route: delegated.
 - [x] T3 UI: create/delete venta (admin), pending list on dashboard, liquidate dialog, liquidation detail. Route: delegated.
 
+- [ ] T4 Ventas share movement numbering and appear in the movements list (user request: the 69 USDT venta is movement #44). Route: delegated (writer trigger: SQL + list + form + actions).
+
 ## Acceptance criteria
 - A 69 USDT venta raises the pending net by 69 in favor of the Bs side.
 - Liquidating includes pending ventas and freezes them.
@@ -46,4 +48,4 @@ Strategy: ask-on-risk. Forecast: ~400–500 authored lines.
 - Applied phase50 to production via Supabase MCP (2026-10-11): RLS on, 4 policies, trigger, total_ventas, guard kept, ventas in net, grant ok, realtime ok. Security advisors: no new findings for ventas.
 
 ## Next step
-User runs `supabase/phase50_ventas_credito.sql` in the Supabase SQL Editor (after parent patch), then smoke-test a 69 USDT venta.
+T4: shared numbering + ventas in the movements list; parent applies phase51 via Supabase MCP.
