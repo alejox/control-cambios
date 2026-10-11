@@ -600,11 +600,20 @@ function FilaTasa({
 
 // --- Utilidades --------------------------------------------------------------
 
-/** Acepta coma o punto decimal; con coma, los puntos son de miles. */
+/**
+ * Acepta coma o punto decimal; con coma, los puntos son de miles. Sin coma,
+ * puntos que separan grupos de exactamente tres cifras ("4.150",
+ * "1.234.567") también son de miles: así se escribe la tasa en es-CO y es-VE,
+ * y leer "4.150" como 4,15 daría un precio mil veces más bajo.
+ */
 function leerNumero(texto: string): number | null {
   const limpio = texto.trim();
   if (limpio === "") return null;
-  const normal = limpio.includes(",") ? limpio.replace(/\./g, "").replace(",", ".") : limpio;
+  const normal = limpio.includes(",")
+    ? limpio.replace(/\./g, "").replace(",", ".")
+    : /^\d{1,3}(\.\d{3})+$/.test(limpio)
+      ? limpio.replace(/\./g, "")
+      : limpio;
   if (!/^\d*\.?\d+$|^\d+\.$/.test(normal)) return null;
   const n = Number(normal);
   return Number.isFinite(n) ? n : null;
