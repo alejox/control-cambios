@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import type { FuenteTasa, RespuestaReferencia } from "@/app/api/tasa-referencia/route";
+import { useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
   buscarProveedor,
   calcularReventa,
@@ -17,11 +16,16 @@ import {
   SUELTO_INICIAL,
   type Seleccion,
 } from "./seleccion";
-import { fmt2 } from "./ui";
+import ControlMargen, { leerMargen } from "./margen";
+import {
+  FilaTasa,
+  leerNumero,
+  textoDeReferencia,
+  type ConsultaTasa,
+} from "./tasas";
+import { CLASE_CONTROL, CLASE_ETIQUETA, fmt2 } from "./ui";
 
-const PRESETS = [0, 10, 20, 30];
 const MARGEN_POR_DEFECTO = "20";
-const MARGEN_MAX = 300;
 const CLAVE_MARGEN = "reventa:margen";
 
 /**
@@ -36,9 +40,13 @@ const CLAVE_MARGEN = "reventa:margen";
 export default function Calculadora({
   sel,
   onCambiar,
+  cop,
+  ves,
 }: {
   sel: Seleccion;
   onCambiar: (sel: Seleccion) => void;
+  cop: ConsultaTasa;
+  ves: ConsultaTasa;
 }) {
   const proveedor = buscarProveedor(sel.proveedorId) ?? PROVEEDORES[0];
   const variante =
@@ -48,8 +56,7 @@ export default function Calculadora({
   const guardado = useSyncExternalStore(suscribirStorage, leerMargenGuardado, () => null);
   const [margenManual, setMargenManual] = useState<string | null>(null);
   const margenTexto = margenManual ?? guardado ?? MARGEN_POR_DEFECTO;
-  const margenLeido = leerNumero(margenTexto);
-  const margen = margenLeido === null ? null : Math.min(MARGEN_MAX, Math.max(0, margenLeido));
+  const { margen } = leerMargen(margenTexto);
 
   function cambiarMargen(texto: string) {
     setMargenManual(texto);
@@ -61,8 +68,6 @@ export default function Calculadora({
   }
 
   // --- Tasas ------------------------------------------------------------
-  const cop = useTasaReferencia("USD_COP");
-  const ves = useTasaReferencia("VES_USDT");
   const [copManual, setCopManual] = useState<string | null>(null);
   const [vesManual, setVesManual] = useState<string | null>(null);
   const copTexto = copManual ?? textoDeReferencia(cop.estado);
@@ -179,58 +184,7 @@ export default function Calculadora({
         )}
       </div>
 
-      {/* Margen */}
-      <div className="flex flex-col gap-2">
-        <label htmlFor="rv-margen" className={CLASE_ETIQUETA}>
-          Margen
-        </label>
-        <div className="flex items-center gap-2">
-          <div
-            role="group"
-            aria-label="Márgenes frecuentes"
-            className="flex flex-none items-center gap-0.5 rounded-[10px] border border-border bg-surface-alt/60 p-0.5"
-          >
-            {PRESETS.map((p) => {
-              const activo = margen === p && margenLeido === p;
-              return (
-                <button
-                  key={p}
-                  type="button"
-                  aria-pressed={activo}
-                  onClick={() => cambiarMargen(String(p))}
-                  className={`rounded-[8px] px-2.5 py-1.5 font-mono text-[11.5px] tabular-nums transition ${
-                    activo ? "bg-ink text-[#F3F1EA]" : "text-ink-soft hover:bg-surface"
-                  }`}
-                >
-                  {p}%
-                </button>
-              );
-            })}
-          </div>
-          <div className="relative min-w-0 flex-1">
-            <input
-              id="rv-margen"
-              inputMode="decimal"
-              autoComplete="off"
-              value={margenTexto}
-              onChange={(e) => cambiarMargen(e.target.value)}
-              aria-invalid={margenLeido === null}
-              className={`${CLASE_CONTROL} pr-8 text-right tabular-nums`}
-            />
-            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[13px] text-ink-soft">
-              %
-            </span>
-          </div>
-        </div>
-        {margenLeido === null ? (
-          <p className="text-[12px] text-critical">Escribí el margen como número, por ejemplo 20 o 12,5.</p>
-        ) : margenLeido !== margen ? (
-          <p className="text-[12px] text-ink-soft">
-            Se usa {margen} %: el margen va de 0 a {MARGEN_MAX} %.
-          </p>
-        ) : null}
-      </div>
-
+      <ControlMargen id="rv-margen" texto={margenTexto} onTexto={cambiarMargen} />
       {/* Tasas */}
       <div className="flex flex-col gap-3">
         <p className={CLASE_ETIQUETA}>Tasas</p>
@@ -273,11 +227,6 @@ export default function Calculadora({
     </div>
   );
 }
-
-const CLASE_CONTROL =
-  "h-10 w-full rounded-[10px] border border-border bg-surface px-3 text-[13.5px] text-ink outline-none transition focus:border-teal focus:ring-2 focus:ring-teal-soft aria-[invalid=true]:border-critical";
-
-const CLASE_ETIQUETA = "font-mono text-[10.5px] uppercase tracking-widest text-ink-soft";
 
 function Campo({
   etiqueta,
@@ -410,7 +359,7 @@ function Resultado({
       </span>
 
       <p className="text-[11.5px] leading-relaxed text-[#A9AE9F]">
-        Pesos redondeados al millar y bolívares a la decena, al más cercano.
+        Pesos redondeados al millar y bolívares a la decena, siempre hacia arriba.
         El valor exacto queda debajo de cada uno.
       </p>
     </div>
@@ -468,161 +417,6 @@ function Conversion({
   );
 }
 
-// --- Tasas -----------------------------------------------------------------
-
-type ParTasa = "USD_COP" | "VES_USDT";
-
-type EstadoTasa =
-  | { estado: "cargando" }
-  | { estado: "ok"; fuente: FuenteTasa; recibida: number }
-  | { estado: "error"; mensaje: string };
-
-type ConsultaTasa = { estado: EstadoTasa; refrescar: () => void };
-
-/**
- * La tasa de referencia de un par, de la misma ruta que usan los
- * movimientos. "Restablecer" vuelve a pedirla: la del servidor tiene 5
- * minutos de cache, así que no castiga a la fuente.
- */
-function useTasaReferencia(par: ParTasa): ConsultaTasa {
-  const [consulta, setConsulta] = useState(0);
-  const [resultado, setResultado] = useState<{ consulta: number; estado: EstadoTasa } | null>(
-    null,
-  );
-
-  useEffect(() => {
-    let cancelado = false;
-    fetch(`/api/tasa-referencia?par=${par}`)
-      .then(async (respuesta) => {
-        const cuerpo = await respuesta.json().catch(() => ({}));
-        if (cancelado) return;
-        if (!respuesta.ok) {
-          setResultado({
-            consulta,
-            estado: { estado: "error", mensaje: cuerpo.error ?? `Error ${respuesta.status}.` },
-          });
-          return;
-        }
-        const { fuente } = cuerpo as RespuestaReferencia;
-        setResultado({ consulta, estado: { estado: "ok", fuente, recibida: Date.now() } });
-      })
-      .catch((e: Error) => {
-        if (!cancelado) setResultado({ consulta, estado: { estado: "error", mensaje: e.message } });
-      });
-    return () => {
-      cancelado = true;
-    };
-  }, [par, consulta]);
-
-  // Una respuesta de otra consulta es la vieja: la nueva sigue en vuelo.
-  const estado: EstadoTasa =
-    resultado !== null && resultado.consulta === consulta ? resultado.estado : { estado: "cargando" };
-
-  return { estado, refrescar: () => setConsulta((c) => c + 1) };
-}
-
-function FilaTasa({
-  id,
-  moneda,
-  sufijo,
-  consulta,
-  texto,
-  manual,
-  onTexto,
-  onRestablecer,
-}: {
-  id: string;
-  moneda: string;
-  sufijo: string;
-  consulta: ConsultaTasa;
-  texto: string;
-  manual: boolean;
-  onTexto: (texto: string) => void;
-  onRestablecer: () => void;
-}) {
-  const { estado } = consulta;
-  const minutos = useMinutosDesde(estado.estado === "ok" ? estado.recibida : null);
-  const valor = leerNumero(texto);
-  const invalida = texto.trim() !== "" && (valor === null || valor <= 0);
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex items-baseline justify-between gap-2">
-        <label htmlFor={id} className="text-[13px] font-medium text-ink">
-          {moneda}
-        </label>
-        <span className="font-mono text-[10.5px] uppercase tracking-wider text-ink-soft">
-          {estado.estado === "ok" ? estado.fuente.etiqueta : sufijo}
-        </span>
-      </div>
-      <div className="flex items-center gap-2">
-        <div className="relative min-w-0 flex-1">
-          <input
-            id={id}
-            inputMode="decimal"
-            autoComplete="off"
-            placeholder={estado.estado === "cargando" ? "Consultando…" : "Escribí la tasa"}
-            value={texto}
-            onChange={(e) => onTexto(e.target.value)}
-            aria-invalid={invalida}
-            className={`${CLASE_CONTROL} pr-[5.5rem] text-right tabular-nums`}
-          />
-          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11.5px] text-ink-soft">
-            {sufijo}
-          </span>
-        </div>
-        {(manual || estado.estado === "error") && (
-          <button
-            type="button"
-            onClick={onRestablecer}
-            title="Volver a la tasa de referencia"
-            className="h-10 flex-none rounded-[10px] border border-border bg-surface px-3 text-[12.5px] text-ink-soft transition hover:text-ink"
-          >
-            {estado.estado === "error" ? "Reintentar" : "Restablecer"}
-          </button>
-        )}
-      </div>
-      <p className="text-[11.5px] leading-snug text-ink-soft" suppressHydrationWarning>
-        {estado.estado === "cargando" && "Consultando la tasa de referencia…"}
-        {estado.estado === "error" && (
-          <span className="text-critical">
-            No pudimos traer la referencia ({estado.mensaje}). Escribí la tasa a mano.
-          </span>
-        )}
-        {estado.estado === "ok" &&
-          (manual
-            ? `Ajustada a mano · ${estado.fuente.etiqueta}: ${fmt2(estado.fuente.valor)}`
-            : `${estado.fuente.detalle}${minutos === null ? "" : ` · consultada ${antiguedad(minutos)}`}`)}
-      </p>
-    </div>
-  );
-}
-
-// --- Utilidades --------------------------------------------------------------
-
-/**
- * Acepta coma o punto decimal; con coma, los puntos son de miles. Sin coma,
- * puntos que separan grupos de exactamente tres cifras ("4.150",
- * "1.234.567") también son de miles: así se escribe la tasa en es-CO y es-VE,
- * y leer "4.150" como 4,15 daría un precio mil veces más bajo.
- */
-function leerNumero(texto: string): number | null {
-  const limpio = texto.trim();
-  if (limpio === "") return null;
-  const normal = limpio.includes(",")
-    ? limpio.replace(/\./g, "").replace(",", ".")
-    : /^\d{1,3}(\.\d{3})+$/.test(limpio)
-      ? limpio.replace(/\./g, "")
-      : limpio;
-  if (!/^\d*\.?\d+$|^\d+\.$/.test(normal)) return null;
-  const n = Number(normal);
-  return Number.isFinite(n) ? n : null;
-}
-
-function textoDeReferencia(estado: EstadoTasa) {
-  if (estado.estado !== "ok") return "";
-  return String(Math.round(estado.fuente.valor * 100) / 100).replace(".", ",");
-}
 
 function leerMargenGuardado() {
   try {
@@ -635,24 +429,4 @@ function leerMargenGuardado() {
 function suscribirStorage(avisar: () => void) {
   window.addEventListener("storage", avisar);
   return () => window.removeEventListener("storage", avisar);
-}
-
-function antiguedad(minutos: number) {
-  if (minutos < 1) return "recién";
-  if (minutos < 60) return `hace ${minutos} min`;
-  const horas = Math.floor(minutos / 60);
-  return `hace ${horas} h`;
-}
-
-/** Minutos desde un instante, refrescados solos cada 30 s. */
-function useMinutosDesde(desde: number | null) {
-  const [ahora, setAhora] = useState(() => Date.now());
-
-  useEffect(() => {
-    const id = setInterval(() => setAhora(Date.now()), 30_000);
-    return () => clearInterval(id);
-  }, []);
-
-  if (desde === null) return null;
-  return Math.max(0, Math.floor((ahora - desde) / 60_000));
 }
