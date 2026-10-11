@@ -10,13 +10,19 @@ import {
 } from "@/lib/reventa";
 import {
   ETIQUETA_SECCION,
-  ORDEN_MONEDAS,
   type MediosPorMoneda,
   type MonedaLista,
 } from "@/lib/venta-publico";
 import ListadoWhatsApp from "./listado-whatsapp";
 import { useTasaReferencia } from "./tasas";
 import { fmt2 } from "./ui";
+
+/**
+ * Orden propio de Reventa: los revendedores cotizan primero en dólares,
+ * después en pesos y por último en bolívares. Venta público sigue con el
+ * suyo (ORDEN_MONEDAS).
+ */
+const ORDEN_REVENTA: MonedaLista[] = ["USD", "COP", "VES"];
 
 /** El crédito más barato del proveedor, en cualquiera de sus variantes. */
 function desde(proveedor: Proveedor) {
@@ -32,7 +38,7 @@ function desde(proveedor: Proveedor) {
  */
 export default function Reventa({ medios }: { medios: MediosPorMoneda }) {
   const [proveedorId, setProveedorId] = useState(PROVEEDORES[0].id);
-  const [moneda, setMoneda] = useState<MonedaLista>(ORDEN_MONEDAS[0]);
+  const [moneda, setMoneda] = useState<MonedaLista>(ORDEN_REVENTA[0]);
 
   const cop = useTasaReferencia("USD_COP");
   const ves = useTasaReferencia("VES_USDT");
@@ -47,7 +53,7 @@ export default function Reventa({ medios }: { medios: MediosPorMoneda }) {
           role="group"
           aria-label="Moneda de la lista"
         >
-          {ORDEN_MONEDAS.map((m) => {
+          {ORDEN_REVENTA.map((m) => {
             const activa = m === moneda;
             return (
               <button
