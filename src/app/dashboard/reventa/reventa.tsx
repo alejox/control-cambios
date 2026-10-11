@@ -13,6 +13,7 @@ import {
   type MediosPorMoneda,
   type MonedaLista,
 } from "@/lib/venta-publico";
+import { Bandera } from "./iconos";
 import ListadoWhatsApp from "./listado-whatsapp";
 import { useTasaReferencia } from "./tasas";
 import { fmt2 } from "./ui";
@@ -49,7 +50,7 @@ export default function Reventa({ medios }: { medios: MediosPorMoneda }) {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-3">
         <div
-          className="flex w-fit items-center gap-0.5 rounded-[10px] border border-border bg-surface-alt/60 p-0.5"
+          className="grid w-full grid-cols-3 gap-1 rounded-[12px] border border-border bg-surface-alt/60 p-1 sm:w-fit"
           role="group"
           aria-label="Moneda de la lista"
         >
@@ -61,10 +62,13 @@ export default function Reventa({ medios }: { medios: MediosPorMoneda }) {
                 type="button"
                 aria-pressed={activa}
                 onClick={() => setMoneda(m)}
-                className={`rounded-[8px] px-3 py-1.5 font-mono text-[11px] uppercase tracking-wide transition ${
-                  activa ? "bg-ink text-[#F3F1EA]" : "text-ink-soft hover:bg-surface"
+                className={`flex items-center justify-center gap-2 rounded-[9px] px-4 py-2 text-[13px] transition ${
+                  activa
+                    ? "bg-ink font-medium text-[#F3F1EA] shadow-sm"
+                    : "text-ink-soft hover:bg-surface hover:text-ink"
                 }`}
               >
+                <Bandera moneda={m} />
                 {ETIQUETA_SECCION[m]}
               </button>
             );
@@ -74,7 +78,7 @@ export default function Reventa({ medios }: { medios: MediosPorMoneda }) {
         <div
           role="group"
           aria-label="Proveedor"
-          className="grid grid-cols-2 gap-1 rounded-[12px] border border-border bg-surface-alt/60 p-1 sm:grid-cols-4"
+          className="grid grid-cols-1 gap-1.5 min-[420px]:grid-cols-2 lg:grid-cols-4"
         >
           {PROVEEDORES.map((p) => {
             const activo = p.id === proveedor.id;
@@ -84,17 +88,30 @@ export default function Reventa({ medios }: { medios: MediosPorMoneda }) {
                 type="button"
                 aria-pressed={activo}
                 onClick={() => setProveedorId(p.id)}
-                className={`flex flex-col items-start gap-0.5 rounded-[9px] px-3.5 py-2 text-left transition ${
-                  activo ? "bg-surface shadow-sm" : "hover:bg-surface/60"
+                className={`flex items-center gap-3 rounded-[12px] border px-3 py-2.5 text-left transition ${
+                  activo
+                    ? "border-accent/50 bg-surface shadow-sm ring-1 ring-accent/30"
+                    : "border-border bg-surface-alt/50 hover:bg-surface"
                 }`}
               >
                 <span
-                  className={`text-[14px] ${activo ? "font-medium text-ink" : "text-ink-soft"}`}
+                  aria-hidden
+                  className={`flex h-9 w-9 flex-none items-center justify-center rounded-[10px] text-[16px] font-medium ${
+                    activo ? "bg-accent text-[#F3F1EA]" : "bg-surface text-ink-soft ring-1 ring-border"
+                  }`}
+                  style={{ fontFamily: "var(--font-display)" }}
                 >
-                  {p.nombre}
+                  {p.nombre.charAt(0)}
                 </span>
-                <span className="font-mono text-[10.5px] tabular-nums text-ink-soft">
-                  costo desde {fmt2(desde(p))} c/u
+                <span className="flex min-w-0 flex-col">
+                  <span
+                    className={`truncate text-[14px] ${activo ? "font-medium text-ink" : "text-ink-soft"}`}
+                  >
+                    {p.nombre}
+                  </span>
+                  <span className="font-mono text-[10.5px] tabular-nums text-ink-soft">
+                    costo desde {fmt2(desde(p))} c/u
+                  </span>
                 </span>
               </button>
             );

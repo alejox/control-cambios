@@ -210,82 +210,98 @@ test("el texto de la cotización lleva todo lo que el cliente necesita", () => {
 
 const stella = () => PROVEEDORES.find((p) => p.id === "stellatv");
 const oleada = () => PROVEEDORES.find((p) => p.id === "oleadatv");
+const telelatino = () => PROVEEDORES.find((p) => p.id === "telelatino");
+
+const CIERRE = "💬 Escríbeme con la cantidad que deseas recargar.";
 
 test("listado de StellaTV en USD al 20 %, entero", () => {
   const texto = listadoWhatsApp({ proveedor: stella(), moneda: "USD", margenPct: 20, tasa: null });
   assert.equal(
     texto,
     [
-      "*StellaTV · Créditos para revendedores*",
-      "Precios en dólares (USD)",
+      "📺 *StellaTV*",
+      "_Créditos para revendedores_",
+      "🇺🇸 *Precios en dólares (USD)*",
       "",
-      "──────────────",
+      "━━━━━━━━━━━━━━",
       "",
-      "🔹 15 créditos ➜ $ 45,00 USD ($ 3,00 c/u) · *Panel nuevo*",
-      "🔹 30 créditos ➜ $ 82,80 USD ($ 2,76 c/u)",
-      "🔹 50 créditos ➜ $ 132,00 USD ($ 2,64 c/u)",
-      "🔹 100 créditos ➜ $ 240,00 USD ($ 2,40 c/u) · *Super panel*",
-      "🔹 300 créditos ➜ $ 702,00 USD ($ 2,34 c/u)",
-      "🔹 500 créditos ➜ $ 1.140,00 USD ($ 2,28 c/u) · *Admin panel*",
-      "🔹 1.000 créditos ➜ $ 2.220,00 USD ($ 2,22 c/u)",
+      "💎 *15 créditos* ➜ *$ 45,00 USD* ($ 3,00 c/u) · 🆕 _Panel nuevo_",
+      "💎 *30 créditos* ➜ *$ 82,80 USD* ($ 2,76 c/u)",
+      "💎 *50 créditos* ➜ *$ 132,00 USD* ($ 2,64 c/u)",
+      "💎 *100 créditos* ➜ *$ 240,00 USD* ($ 2,40 c/u) · ⭐ _Super panel_",
+      "💎 *300 créditos* ➜ *$ 702,00 USD* ($ 2,34 c/u)",
+      "💎 *500 créditos* ➜ *$ 1.140,00 USD* ($ 2,28 c/u) · 👑 _Admin panel_",
+      "💎 *1.000 créditos* ➜ *$ 2.220,00 USD* ($ 2,22 c/u) · 🔥 *Mejor precio*",
       "",
-      "──────────────",
+      "━━━━━━━━━━━━━━",
       "",
+      "📌 *Condiciones*",
       "✅ Panel nuevo a partir de 15 créditos.",
       "✅ Super panel a partir de 100 créditos.",
       "✅ Admin panel a partir de 500 créditos.",
+      "",
+      CIERRE,
     ].join("\n"),
   );
 });
 
 test("listado de StellaTV en COP: millar y c/u a la decena, hacia arriba", () => {
   const texto = listadoWhatsApp({ proveedor: stella(), moneda: "COP", margenPct: 20, tasa: 4000 });
-  assert.match(texto, /^\*StellaTV · Créditos para revendedores\*\nPrecios en pesos \(COP\)/);
-  assert.match(texto, /🔹 15 créditos ➜ \$ 180\.000 COP \(\$ 12\.000 c\/u\) · \*Panel nuevo\*/);
+  assert.match(texto, /^📺 \*StellaTV\*\n_Créditos para revendedores_\n🇨🇴 \*Precios en pesos \(COP\)\*/);
+  assert.match(texto, /💎 \*15 créditos\* ➜ \*\$ 180\.000 COP\* \(\$ 12\.000 c\/u\) · 🆕 _Panel nuevo_/);
   // 82,80 × 4.000 = 331.200 → 332.000; 332.000 / 30 = 11.066,67 → 11.070
-  assert.match(texto, /🔹 30 créditos ➜ \$ 332\.000 COP \(\$ 11\.070 c\/u\)\n/);
-  assert.match(texto, /🔹 1\.000 créditos ➜ \$ 8\.880\.000 COP \(\$ 8\.880 c\/u\)/);
+  assert.match(texto, /💎 \*30 créditos\* ➜ \*\$ 332\.000 COP\* \(\$ 11\.070 c\/u\)\n/);
+  assert.match(texto, /💎 \*1\.000 créditos\* ➜ \*\$ 8\.880\.000 COP\* \(\$ 8\.880 c\/u\) · 🔥 \*Mejor precio\*/);
   assert.doesNotMatch(texto, /USD|Bs/);
 });
 
 test("listado de StellaTV en Bs: decena y c/u entero", () => {
   const texto = listadoWhatsApp({ proveedor: stella(), moneda: "VES", margenPct: 20, tasa: 150 });
-  assert.match(texto, /Precios en bolívares \(Bs\)/);
-  assert.match(texto, /🔹 30 créditos ➜ Bs 12\.420 \(Bs 414 c\/u\)\n/);
-  assert.match(texto, /🔹 500 créditos ➜ Bs 171\.000 \(Bs 342 c\/u\) · \*Admin panel\*/);
+  assert.match(texto, /🇻🇪 \*Precios en bolívares \(Bs\)\*/);
+  assert.match(texto, /💎 \*30 créditos\* ➜ \*Bs 12\.420\* \(Bs 414 c\/u\)\n/);
+  assert.match(texto, /💎 \*500 créditos\* ➜ \*Bs 171\.000\* \(Bs 342 c\/u\) · 👑 _Admin panel_/);
   assert.doesNotMatch(texto, /USD|COP/);
 });
 
 test("el redondeo del listado sube al paso, nunca baja", () => {
   // 82,80 × 151,37 = 12.533,44 → 12.540; 12.540 / 30 = 418
   const ves = listadoWhatsApp({ proveedor: stella(), moneda: "VES", margenPct: 20, tasa: 151.37 });
-  assert.match(ves, /30 créditos ➜ Bs 12\.540 \(Bs 418 c\/u\)/);
+  assert.match(ves, /\*30 créditos\* ➜ \*Bs 12\.540\* \(Bs 418 c\/u\)/);
   // 82,80 × 3.912,45 = 323.950,86 → 324.000; 324.000 / 30 = 10.800
   const cop = listadoWhatsApp({ proveedor: stella(), moneda: "COP", margenPct: 20, tasa: 3912.45 });
-  assert.match(cop, /30 créditos ➜ \$ 324\.000 COP \(\$ 10\.800 c\/u\)/);
+  assert.match(cop, /\*30 créditos\* ➜ \*\$ 324\.000 COP\* \(\$ 10\.800 c\/u\)/);
 });
 
-test("OleadaTV: una sección por variante con su recarga suelta", () => {
+test("OleadaTV: una sección por variante, con su ícono y su recarga suelta", () => {
   const texto = listadoWhatsApp({ proveedor: oleada(), moneda: "USD", margenPct: 20, tasa: null });
   assert.match(
     texto,
-    /📺 \*Multidispositivo · 3 pantallas\*\n_TV Box, Smart TV y celular_\n\n🔸 Recarga suelta de 1 a 29 créditos ➜ \$ 3,36 c\/u\n🔹 30 créditos ➜ \$ 68,40 USD \(\$ 2,28 c\/u\)/,
+    /📺📱 \*Multidispositivo · 3 pantallas\*\n_TV Box, Smart TV y celular_\n\n⚡ \*Recarga suelta:\* 1 a 29 créditos ➜ \*\$ 3,36\* c\/u\n💎 \*30 créditos\* ➜ \*\$ 68,40 USD\* \(\$ 2,28 c\/u\)/,
   );
   assert.match(
     texto,
-    /📺 \*Un dispositivo · 1 pantalla\*\n_Solo celulares y tablets_\n\n🔸 Recarga suelta de 1 a 29 créditos ➜ \$ 2,16 c\/u/,
+    /📱 \*Un dispositivo · 1 pantalla\*\n_Solo celulares y tablets_\n\n⚡ \*Recarga suelta:\* 1 a 29 créditos ➜ \*\$ 2,16\* c\/u/,
   );
-  assert.match(texto, /✅ Apertura de panel inmediata y soporte activo\./);
+  // El mejor precio se marca en cada variante.
+  assert.equal(texto.match(/🔥 \*Mejor precio\*/g).length, 2);
+  assert.match(texto, /✅ Apertura de panel inmediata\.\n/);
+  assert.doesNotMatch(texto, /soporte/);
 
   const ves = listadoWhatsApp({ proveedor: oleada(), moneda: "VES", margenPct: 20, tasa: 150 });
   // 2,80 × 1,2 = 3,36 × 150 = 504
-  assert.match(ves, /🔸 Recarga suelta de 1 a 29 créditos ➜ Bs 504 c\/u/);
+  assert.match(ves, /⚡ \*Recarga suelta:\* 1 a 29 créditos ➜ \*Bs 504\* c\/u/);
+});
+
+test("sin condiciones del proveedor, el cierre va igual", () => {
+  const texto = listadoWhatsApp({ proveedor: telelatino(), moneda: "USD", margenPct: 20, tasa: null });
+  assert.doesNotMatch(texto, /Condiciones/);
+  assert.ok(texto.endsWith(`━━━━━━━━━━━━━━\n\n${CIERRE}`));
 });
 
 test("sin margen el listado es el precio del proveedor", () => {
   const texto = listadoWhatsApp({ proveedor: stella(), moneda: "USD", margenPct: 0, tasa: null });
-  assert.match(texto, /🔹 30 créditos ➜ \$ 69,00 USD \(\$ 2,30 c\/u\)/);
-  assert.match(texto, /🔹 15 créditos ➜ \$ 37,50 USD \(\$ 2,50 c\/u\)/);
+  assert.match(texto, /\*30 créditos\* ➜ \*\$ 69,00 USD\* \(\$ 2,30 c\/u\)/);
+  assert.match(texto, /\*15 créditos\* ➜ \*\$ 37,50 USD\* \(\$ 2,50 c\/u\)/);
 });
 
 test("cada moneda sale de su propio margen y su propia tasa", () => {
@@ -293,11 +309,11 @@ test("cada moneda sale de su propio margen y su propia tasa", () => {
   const usd = listadoWhatsApp({ proveedor: stella(), moneda: "USD", margenPct: 0, tasa: 9999 });
   const cop = listadoWhatsApp({ proveedor: stella(), moneda: "COP", margenPct: 30, tasa: 4000 });
   // 69 × 1,1 = 75,90 × 200 = 15.180
-  assert.match(ves, /30 créditos ➜ Bs 15\.180 /);
+  assert.match(ves, /\*30 créditos\* ➜ \*Bs 15\.180\* /);
   // USD no convierte: la tasa no lo toca.
-  assert.match(usd, /30 créditos ➜ \$ 69,00 USD /);
+  assert.match(usd, /\*30 créditos\* ➜ \*\$ 69,00 USD\* /);
   // 69 × 1,3 = 89,70 × 4.000 = 358.800 → 359.000
-  assert.match(cop, /30 créditos ➜ \$ 359\.000 COP /);
+  assert.match(cop, /\*30 créditos\* ➜ \*\$ 359\.000 COP\* /);
   // Volver a pedir Bs con otros números no arrastra nada del anterior.
   assert.equal(
     listadoWhatsApp({ proveedor: stella(), moneda: "VES", margenPct: 10, tasa: 200 }),
@@ -316,6 +332,8 @@ test("Bs y COP sin tasa no arman listado; los medios de cobro van al final", () 
     tasa: null,
     mediosPago: "  Medios de pago:\n\n🏦 Binance  ",
   });
-  assert.ok(conMedios.endsWith("✅ Admin panel a partir de 500 créditos.\n\nMedios de pago:\n\n🏦 Binance"));
-  assert.ok(!listadoWhatsApp({ proveedor: stella(), moneda: "USD", margenPct: 20, tasa: null, mediosPago: "   " }).endsWith("\n\n"));
+  assert.ok(conMedios.endsWith(`${CIERRE}\n\nMedios de pago:\n\n🏦 Binance`));
+  assert.ok(
+    listadoWhatsApp({ proveedor: stella(), moneda: "USD", margenPct: 20, tasa: null, mediosPago: "   " }).endsWith(CIERRE),
+  );
 });
