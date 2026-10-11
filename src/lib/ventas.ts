@@ -6,6 +6,8 @@
  */
 export type Venta = {
   id: string;
+  /** Comparte la numeración de los movimientos pendientes (fase 51). */
+  numero: number;
   usdt: number;
   fecha: string;
   descripcion: string | null;
@@ -18,7 +20,7 @@ export const VENTA_DESCRIPCION_MAX = 200;
 
 /** Las columnas que se leen siempre, en el mismo orden en todas las pantallas. */
 export const COLUMNAS_VENTA =
-  "id, usdt, fecha, descripcion, created_by, created_at, liquidacion_id";
+  "id, numero, usdt, fecha, descripcion, created_by, created_at, liquidacion_id";
 
 /** numeric llega como texto desde PostgREST: se suma como número y en centavos. */
 export function sumarVentas(ventas: Pick<Venta, "usdt">[]) {
@@ -27,17 +29,51 @@ export function sumarVentas(ventas: Pick<Venta, "usdt">[]) {
 }
 
 /**
+ * El número que se le propone al próximo movimiento o venta: uno más que el
+ * mayor de lo pendiente, mirando las DOS tablas. Movimientos y ventas
+ * comparten la numeración (fase 51), así que mirar una sola propondría un
+ * número que la base después rechaza.
+ */
+export function siguienteNumeroPendiente(
+  numerosItems: number[],
+  numerosVentas: number[],
+) {
+  return Math.max(0, ...numerosItems, ...numerosVentas) + 1;
+}
+
+/** "AAAA-MM-DD" que existe en el calendario: el 31 de febrero no pasa. */
+function esFechaReal(fecha: string) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(fecha);
+  if (!m) return false;
+  const [anio, mes, dia] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  // Date.UTC desborda en silencio (31/02 -> 03/03): se valida que vuelva
+  // con el mismo año, mes y día que se le dio.
+  const d = new Date(Date.UTC(anio, mes - 1, dia));
+  return d.getUTCFullYear() === anio && d.getUTCMonth() === mes - 1 && d.getUTCDate() === dia;
+}
+
+/**
  * Lee y valida lo que manda el formulario. Vive acá y no en la acción para
- * que la regla —- monto positivo, fecha real, descripción corta -— sea una
- * sola y se pueda probar sin servidor.
+ * que la regla —- monto positivo, fecha real, descripción corta, número
+ * entero positivo -— sea una sola y se pueda probar sin servidor.
  */
 export function leerVenta(campos: {
   usdt: FormDataEntryValue | null;
   fecha: FormDataEntryValue | null;
   descripcion: FormDataEntryValue | null;
+  numero: FormDataEntryValue | null;
 }):
   | { error: string; venta: null }
-  | { error: null; venta: { usdt: number; fecha: string; descripcion: string | null } } {
+  | {
+      error: null;
+      venta: { usdt: number; fecha: string; descripcion: string | null; numero: number };
+    } {
+  const numeroTexto = String(campos.numero ?? "").trim();
+  const numero = Number(numeroTexto);
+  if (!numeroTexto || !Number.isInteger(numero) || numero <= 0) {
+    return { error: "El número tiene que ser un entero mayor que cero.", venta: null };
+  }
+
   const usdtTexto = String(campos.usdt ?? "").trim().replace(",", ".");
   const usdt = Number(usdtTexto);
   if (!usdtTexto || !Number.isFinite(usdt) || usdt <= 0) {
@@ -49,7 +85,7 @@ export function leerVenta(campos: {
   }
 
   const fecha = String(campos.fecha ?? "").trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || Number.isNaN(Date.parse(fecha))) {
+  if (!esFechaReal(fecha)) {
     return { error: "La fecha no es válida.", venta: null };
   }
 
@@ -61,5 +97,5 @@ export function leerVenta(campos: {
     };
   }
 
-  return { error: null, venta: { usdt, fecha, descripcion } };
+  return { error: null, venta: { usdt, fecha, descripcion, numero } };
 }

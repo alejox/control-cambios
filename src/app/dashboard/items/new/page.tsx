@@ -5,6 +5,7 @@ import ItemForm from "../item-form";
 import { crearItem } from "../actions";
 import { leerComisiones } from "@/lib/configuracion";
 import { leerMonedaPreferida } from "@/lib/preferencias";
+import { siguienteNumeroPendiente } from "@/lib/ventas";
 
 export default async function NuevoItemPage() {
   const supabase = await createClient();
@@ -28,15 +29,29 @@ export default async function NuevoItemPage() {
   // Solo entre los pendientes: al liquidar, el contador vuelve a empezar.
   // maybeSingle y no single porque "no hay ninguno" es el caso NORMAL
   // justo despues de un corte, no un error.
-  const { data: ultimo } = await supabase
-    .from("items")
-    .select("numero")
-    .is("liquidacion_id", null)
-    .order("numero", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  // Las ventas de créditos pendientes comparten la serie (fase 51): el
+  // número propuesto tiene que saltar también el de la última venta.
+  const [{ data: ultimo }, { data: ultimaVenta }] = await Promise.all([
+    supabase
+      .from("items")
+      .select("numero")
+      .is("liquidacion_id", null)
+      .order("numero", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("ventas")
+      .select("numero")
+      .is("liquidacion_id", null)
+      .order("numero", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
 
-  const siguienteNumero = (ultimo?.numero ?? 0) + 1;
+  const siguienteNumero = siguienteNumeroPendiente(
+    ultimo ? [ultimo.numero] : [],
+    ultimaVenta ? [ultimaVenta.numero] : [],
+  );
   const comisiones = await leerComisiones();
   // El colaborador solo registra COP -> USDT; la politica de RLS rechaza
   // cualquier otra cosa, asi que el formulario no le ofrece elegir.

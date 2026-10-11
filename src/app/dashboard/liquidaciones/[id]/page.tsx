@@ -52,7 +52,7 @@ export default async function LiquidacionPage({
     .from("ventas")
     .select(COLUMNAS_VENTA)
     .eq("liquidacion_id", id)
-    .order("fecha", { ascending: true });
+    .order("numero", { ascending: true });
   const ventas = (datosVentas ?? []) as Venta[];
   const totalVentas = Number(liquidacion.total_ventas ?? 0);
 
@@ -238,6 +238,11 @@ export default async function LiquidacionPage({
                 key={v.id}
                 className="flex flex-col gap-1 px-5 py-3 text-[13.5px] sm:flex-row sm:items-center sm:gap-4"
               >
+                {/* El número es de la misma serie que los movimientos del
+                    corte (fase 51). */}
+                <span className="w-12 flex-none font-mono text-[12.5px] text-ink-soft">
+                  #{v.numero}
+                </span>
                 <span className="w-24 flex-none font-mono text-[12.5px] text-ink-soft">
                   {formatFecha(v.fecha)}
                 </span>
