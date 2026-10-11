@@ -189,14 +189,14 @@ export default async function DashboardPage() {
                 <p className="mt-1 text-[12.5px] text-ink-soft">{tarjetaMovimientos.canjes}</p>
               )}
             </div>
-            <div className="rounded-2xl border border-accent-soft bg-accent-soft/30 p-6">
+            <div className="flex flex-col rounded-2xl border border-accent-soft bg-accent-soft/30 p-6">
               <div className="mb-3 flex items-start justify-between gap-3">
                 <p className="font-mono text-[11px] uppercase tracking-widest text-[#8f5e1f]">
                   Cobra quien recibió en Bs
                 </p>
                 <Personaje pais="co" className="-mt-2 h-12 w-12 flex-none" />
               </div>
-              <div className="flex flex-col gap-1.5 text-[13px]">
+              <div className="mb-3 flex flex-col gap-1.5 text-[13px] tabular-nums">
                 <div className="flex items-baseline justify-between gap-3">
                   <span className="text-ink-soft">Ventas en Bs</span>
                   <span className="text-ink">{formatMonto(totalUsdtBs, "USDT")}</span>
@@ -213,20 +213,20 @@ export default async function DashboardPage() {
                 )}
               </div>
               <p
-                className="mt-3 border-t border-accent-soft pt-3 text-2xl font-medium text-ink"
+                className="mt-auto border-t border-accent-soft pt-3 text-2xl font-medium tabular-nums text-ink"
                 style={{ fontFamily: "var(--font-display)" }}
               >
                 {formatMonto(previa.cobra.bs, "USDT")}
               </p>
             </div>
-            <div className="rounded-2xl border border-teal-soft bg-teal-soft/30 p-6">
+            <div className="flex flex-col rounded-2xl border border-teal-soft bg-teal-soft/30 p-6">
               <div className="mb-3 flex items-start justify-between gap-3">
                 <p className="font-mono text-[11px] uppercase tracking-widest text-[#215d4d]">
                   Cobra quien recibió en COP
                 </p>
                 <Personaje pais="ve" className="-mt-2 h-12 w-12 flex-none" />
               </div>
-              <div className="flex flex-col gap-1.5 text-[13px]">
+              <div className="mb-3 flex flex-col gap-1.5 text-[13px] tabular-nums">
                 <div className="flex items-baseline justify-between gap-3">
                   <span className="text-ink-soft">Ventas en COP</span>
                   <span className="text-ink">{formatMonto(totalUsdtCop, "USDT")}</span>
@@ -237,7 +237,7 @@ export default async function DashboardPage() {
                 </div>
               </div>
               <p
-                className="mt-3 border-t border-teal-soft pt-3 text-2xl font-medium text-ink"
+                className="mt-auto border-t border-teal-soft pt-3 text-2xl font-medium tabular-nums text-ink"
                 style={{ fontFamily: "var(--font-display)" }}
               >
                 {formatMonto(previa.cobra.cop, "USDT")}
