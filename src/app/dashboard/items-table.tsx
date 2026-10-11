@@ -6,6 +6,7 @@ import { Fragment, useRef, useState, useTransition } from "react";
 import DeleteButton from "./items/delete-button";
 import DesaprobarItem from "./items/desaprobar-item";
 import VisorComprobante, { type VisorHandle } from "./visor-comprobante";
+import { EliminarVenta } from "./ventas/ventas-credito";
 import {
   ETIQUETA_FLUJO,
   formatFecha,
@@ -13,6 +14,7 @@ import {
   repartir,
   type Item,
 } from "@/lib/items";
+import type { Venta } from "@/lib/ventas";
 
 export type DepositoFila = {
   id: string;
@@ -93,13 +95,30 @@ const IconoDocumento = (
   </svg>
 );
 
+/**
+ * Una fila de la tabla: un movimiento o una venta de créditos. Las ventas
+ * comparten la numeración de los movimientos (fase 51) y se nombran igual
+ * ("el 44"), así que van en la misma lista y ordenadas por número.
+ */
+type Entrada = { tipo: "item"; item: Item } | { tipo: "venta"; venta: Venta };
+
+/** Lo que una venta muestra en Tasa y Comisión: no tiene ninguna de las dos. */
+const CERO_TASA = new Intl.NumberFormat("es-VE", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+}).format(0);
+const CERO_USDT = formatMonto(0, "USDT");
+
 export default function ItemsTable({
   items,
+  ventas = [],
   depositos,
   esAdmin,
   vacio,
 }: {
   items: Item[];
+  /** Ventas de créditos pendientes. Llegan solo desde el panel. */
+  ventas?: Venta[];
   depositos: DepositoFila[];
   esAdmin: boolean;
   vacio: React.ReactNode;
@@ -165,7 +184,8 @@ export default function ItemsTable({
   // filas que se leen de un vistazo, la barra es ruido: ocupa lugar y
   // sugiere un trabajo que nadie necesita hacer.
   const MINIMO_PARA_FILTRAR = 6;
-  const conFiltros = items.length >= MINIMO_PARA_FILTRAR;
+  const totalFilas = items.length + ventas.length;
+  const conFiltros = totalFilas >= MINIMO_PARA_FILTRAR;
 
   // Dos banderas y no una. "hayFiltro" es cualquier filtro activo y decide
   // si se muestran el contador y el boton de limpiar. "hayFiltroDeDeposito"
@@ -190,6 +210,32 @@ export default function ItemsTable({
         );
       })
     : items;
+
+  // Una venta no tiene flujo, depósitos ni referencia: entra con el número,
+  // con la fecha y con el filtro de flujo en "Ventas de créditos". Buscar
+  // una referencia la deja afuera, porque no tiene ninguna que coincida.
+  const ventasVisibles = conFiltros
+    ? ventas.filter(
+        (v) =>
+          (numeroBuscado === null || v.numero === numeroBuscado) &&
+          (buscaFlujo === "" || buscaFlujo === "venta") &&
+          (!desde || v.fecha >= desde) &&
+          (!hasta || v.fecha <= hasta) &&
+          refBuscada === "",
+      )
+    : ventas;
+
+  // Sin ventas se respeta el orden en que llegan los movimientos (el panel
+  // los pide de mayor a menor, el detalle de un corte al revés). Con
+  // ventas, que solo manda el panel, se intercalan por número de mayor a
+  // menor, como los movimientos del panel.
+  const entradas: Entrada[] = [
+    ...visibles.map((item) => ({ tipo: "item" as const, item })),
+    ...ventasVisibles.map((venta) => ({ tipo: "venta" as const, venta })),
+  ];
+  if (ventasVisibles.length > 0) {
+    entradas.sort((a, b) => numeroDe(b) - numeroDe(a));
+  }
 
   // Solo para la fila de "sin resultados": el resto de la tabla no usa
   // colSpan, justamente para que las columnas alineen.
@@ -223,7 +269,7 @@ export default function ItemsTable({
   }
 
 
-  if (items.length === 0) {
+  if (totalFilas === 0) {
     return <div className="p-10 text-center text-[14.5px] text-ink-soft">{vacio}</div>;
   }
 
@@ -294,6 +340,7 @@ export default function ItemsTable({
                 {etiqueta}
               </option>
             ))}
+            {ventas.length > 0 && <option value="venta">Ventas de créditos</option>}
           </select>
         </div>
 
@@ -317,7 +364,7 @@ export default function ItemsTable({
         {hayFiltro && (
           <div className="flex items-center gap-3 pb-0.5">
             <span className="text-[12.5px] text-ink-soft">
-              {visibles.length} de {items.length}
+              {entradas.length} de {totalFilas}
             </span>
             <button
               type="button"
@@ -335,13 +382,19 @@ export default function ItemsTable({
           240 px al canal, así que un viewport "desktop" todavía no alcanza
           para las doce columnas sin desplazamiento lateral. */}
       <div className="divide-y divide-border 2xl:hidden">
-        {visibles.length === 0 && (
+        {entradas.length === 0 && (
           <p className="px-5 py-10 text-center text-[14px] text-ink-soft">
             Ningún movimiento coincide con el filtro.
           </p>
         )}
 
-        {visibles.map((item) => {
+        {entradas.map((entrada) => {
+          if (entrada.tipo === "venta") {
+            return (
+              <TarjetaVenta key={`venta-${entrada.venta.id}`} venta={entrada.venta} esAdmin={esAdmin} />
+            );
+          }
+          const item = entrada.item;
           const filas = porItem.get(item.id) ?? [];
           const conComprobante = filas.filter(tieneComprobante);
           const totalOrigen = filas.reduce((acc, d) => acc + Number(d.valor_origen), 0);
@@ -579,7 +632,7 @@ export default function ItemsTable({
           </tr>
         </thead>
         <tbody>
-          {visibles.length === 0 && (
+          {entradas.length === 0 && (
             <tr>
               <td
                 colSpan={totalColumnas}
@@ -590,7 +643,13 @@ export default function ItemsTable({
             </tr>
           )}
 
-          {visibles.map((item) => {
+          {entradas.map((entrada) => {
+            if (entrada.tipo === "venta") {
+              return (
+                <FilaVenta key={`venta-${entrada.venta.id}`} venta={entrada.venta} esAdmin={esAdmin} />
+              );
+            }
+            const item = entrada.item;
             const filas = porItem.get(item.id) ?? [];
             const conComprobante = filas.filter(tieneComprobante);
             const totalOrigen = filas.reduce((acc, d) => acc + Number(d.valor_origen), 0);
@@ -921,5 +980,134 @@ function Refrescar() {
         {IconoRefrescar}
       </span>
     </button>
+  );
+}
+
+function numeroDe(entrada: Entrada) {
+  return entrada.tipo === "item" ? entrada.item.numero : entrada.venta.numero;
+}
+
+/**
+ * La marca de una venta, en el lugar donde un movimiento muestra su flujo:
+ * es lo primero que se mira para saber qué tipo de fila es.
+ */
+function EtiquetaVenta({ className }: { className: string }) {
+  return (
+    <span
+      className={`whitespace-nowrap rounded-full bg-ink px-2 py-0.5 font-mono uppercase tracking-wide text-[#F3F1EA] ${className}`}
+    >
+      Venta
+    </span>
+  );
+}
+
+/** Las ventas no pasan por aprobación: el estado lo dice en vez de quedar vacío. */
+function EstadoVenta({ className }: { className: string }) {
+  return (
+    <span
+      title="Las ventas de créditos no pasan por aprobación"
+      className={`whitespace-nowrap rounded-full bg-surface-alt px-2 py-0.5 font-mono uppercase tracking-wide text-ink-soft ${className}`}
+    >
+      Sin aprobación
+    </span>
+  );
+}
+
+/**
+ * Una venta de créditos en la vista compacta. Sin depósitos, comprobantes
+ * ni revisión: lo único que se puede hacer con una pendiente es borrarla.
+ * Tasa y comisión van en cero y no en blanco: la venta no tiene ninguna de
+ * las dos, y un cero se lee como "no hay" mientras que un hueco se lee
+ * como "falta cargar".
+ */
+function TarjetaVenta({ venta, esAdmin }: { venta: Venta; esAdmin: boolean }) {
+  return (
+    <article className="p-4 sm:p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-[12px] text-ink-soft">#{venta.numero}</span>
+            <EtiquetaVenta className="text-[10.5px]" />
+          </div>
+          <p className="mt-1 text-[13px] text-ink-soft">{formatFecha(venta.fecha)}</p>
+        </div>
+        <div className="text-right">
+          <p className="font-medium text-ink">{formatMonto(Number(venta.usdt), "USDT")}</p>
+          <p className="mt-1">
+            <EstadoVenta className="text-[10px]" />
+          </p>
+        </div>
+      </div>
+
+      <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-[13px]">
+        <div>
+          <dt className="text-[11px] text-ink-soft">Tasa</dt>
+          <dd className="mt-0.5 text-ink">{CERO_TASA}</dd>
+        </div>
+        <div>
+          <dt className="text-[11px] text-ink-soft">Comisión</dt>
+          <dd className="mt-0.5 text-ink">{CERO_USDT}</dd>
+        </div>
+        <div className="col-span-2">
+          <dt className="text-[11px] text-ink-soft">Descripción</dt>
+          <dd className="mt-0.5 break-words text-ink">
+            {venta.descripcion ?? "Venta de créditos"}
+          </dd>
+        </div>
+      </dl>
+
+      {esAdmin && venta.liquidacion_id === null && (
+        <div className="mt-4 flex items-center gap-3 border-t border-border pt-3">
+          <EliminarVenta venta={venta} />
+        </div>
+      )}
+    </article>
+  );
+}
+
+/**
+ * La misma venta como fila de la tabla ancha, con una celda por columna
+ * para que todo alinee con los movimientos. La descripción va en la
+ * columna de referencia, que es donde cada fila dice "qué fue".
+ */
+function FilaVenta({ venta, esAdmin }: { venta: Venta; esAdmin: boolean }) {
+  return (
+    <tr className="border-b border-border last:border-0">
+      <td className="px-5 py-3 font-mono text-ink-soft">{venta.numero}</td>
+      <td className="px-5 py-3 text-ink-soft">{formatFecha(venta.fecha)}</td>
+      <td className="px-5 py-3">
+        <EtiquetaVenta className="text-[11px]" />
+      </td>
+      <td className="px-5 py-3 text-ink-soft">—</td>
+      <td className="hidden px-5 py-3 text-ink-soft md:table-cell">{CERO_TASA}</td>
+      <td className="px-5 py-3 font-medium text-ink">
+        {formatMonto(Number(venta.usdt), "USDT")}
+      </td>
+      <td className="hidden px-5 py-3 text-ink-soft md:table-cell">{CERO_USDT}</td>
+      <td className="px-5 py-3">
+        <EstadoVenta className="text-[10.5px]" />
+      </td>
+      <td
+        className="hidden max-w-[16rem] truncate px-5 py-3 text-[12.5px] text-ink-soft md:table-cell"
+        title={venta.descripcion ?? undefined}
+      >
+        {venta.descripcion ?? "Venta de créditos"}
+      </td>
+      <td className="px-5 py-3">
+        <span className="text-ink-soft" title="Las ventas no llevan comprobante">
+          —
+        </span>
+      </td>
+      {esAdmin && (
+        <td className="px-5 py-3">
+          {venta.liquidacion_id === null ? (
+            <EliminarVenta venta={venta} />
+          ) : (
+            <span className="text-[13px] text-ink-soft/60">Liquidada</span>
+          )}
+        </td>
+      )}
+      <td className="px-5 py-3" />
+    </tr>
   );
 }

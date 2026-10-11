@@ -9,8 +9,13 @@ import RecalcularComisiones from "./recalcular-comisiones";
 import { COMISION_PCT_FALLBACK, leerComisiones } from "@/lib/configuracion";
 import { formatMonto, resumirRecalculo, type Item } from "@/lib/items";
 import { previaDeCorte } from "@/lib/liquidaciones";
-import { COLUMNAS_VENTA, sumarVentas, type Venta } from "@/lib/ventas";
-import VentasCredito from "./ventas/ventas-credito";
+import {
+  COLUMNAS_VENTA,
+  siguienteNumeroPendiente,
+  sumarVentas,
+  type Venta,
+} from "@/lib/ventas";
+import { GenerarVenta } from "./ventas/ventas-credito";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -49,15 +54,15 @@ export default async function DashboardPage() {
   }
 
   // Las ventas de créditos pendientes: entran en el próximo corte igual que
-  // los movimientos, sumando a lo que cobra el lado Bs.
+  // los movimientos, sumando a lo que cobra el lado Bs. Comparten la
+  // numeración de los movimientos (fase 51) y se listan en la misma tabla.
   let ventas: Venta[] = [];
   if (puedeVer) {
     const { data } = await supabase
       .from("ventas")
       .select(COLUMNAS_VENTA)
       .is("liquidacion_id", null)
-      .order("fecha", { ascending: false })
-      .order("created_at", { ascending: false });
+      .order("numero", { ascending: false });
     ventas = (data ?? []) as Venta[];
   }
   const totalVentas = sumarVentas(ventas);
@@ -66,6 +71,16 @@ export default async function DashboardPage() {
   const hayPendiente = items.length > 0 || ventas.length > 0;
 
   const totalItems = items.length;
+  // Movimientos y ventas pendientes comparten la serie: la venta nueva
+  // propone el número que sigue al mayor de los dos.
+  const siguienteNumero = siguienteNumeroPendiente(
+    items.map((i) => i.numero),
+    ventas.map((v) => v.numero),
+  );
+  // La tarjeta cuenta las ventas como movimientos: están en la misma lista
+  // y con número propio. "Sin aprobar" sigue siendo solo de items, porque
+  // las ventas no pasan por aprobación.
+  const totalMovimientos = totalItems + ventas.length;
   const totalUsdtBs = items
     .filter((i) => i.tipo_flujo === "bs_a_usdt")
     .reduce((acc, i) => acc + Number(i.usdt_total), 0);
@@ -164,10 +179,10 @@ export default async function DashboardPage() {
                 Movimientos
               </p>
               <p className="text-2xl font-medium text-ink" style={{ fontFamily: "var(--font-display)" }}>
-                {totalItems}
+                {totalMovimientos}
               </p>
               <p className="mt-1 text-[12.5px] text-ink-soft">
-                {totalItems === 0
+                {totalMovimientos === 0
                   ? "Nada que liquidar"
                   : sinAprobar > 0
                     ? `${sinAprobar} sin aprobar`
@@ -291,14 +306,16 @@ export default async function DashboardPage() {
             )}
           </div>
 
-          <div className="flex items-center justify-between">
+          {/* flex-wrap: con "Generar venta" son tres botones y en un
+              teléfono no entran al lado del título. */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <h1
               className="text-xl font-medium text-ink"
               style={{ fontFamily: "var(--font-display)" }}
             >
               Pendiente de liquidar
             </h1>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               {/* Liquidar es solo del admin. Registrar no: el colaborador
                   puede cargar movimientos COP -> USDT. */}
               {esAdmin && (
@@ -313,6 +330,7 @@ export default async function DashboardPage() {
                   totalVentas={totalVentas}
                 />
               )}
+              {esAdmin && <GenerarVenta siguienteNumero={siguienteNumero} />}
               {puedeVer && (
                 <Link
                   href="/dashboard/items/new"
@@ -324,11 +342,10 @@ export default async function DashboardPage() {
             </div>
           </div>
 
-          <VentasCredito ventas={ventas} total={totalVentas} esAdmin={esAdmin} />
-
           <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
             <ItemsTable
               items={items}
+              ventas={ventas}
               depositos={depositos}
               esAdmin={esAdmin}
               vacio={

@@ -29,7 +29,7 @@ removes the external payment.
 - [x] T2 TS math: include ventas in `cobraCadaLado`/`previaDeCorte`, with node:test RED→GREEN. Route: delegated.
 - [x] T3 UI: create/delete venta (admin), pending list on dashboard, liquidate dialog, liquidation detail. Route: delegated.
 
-- [ ] T4 Ventas share movement numbering and appear in the movements list (user request: the 69 USDT venta is movement #44). Route: delegated (writer trigger: SQL + list + form + actions).
+- [x] T4 Ventas share movement numbering and appear in the movements list (user request: the 69 USDT venta is movement #44). Route: delegated (writer trigger: SQL + list + form + actions).
 
 ## Acceptance criteria
 - A 69 USDT venta raises the pending net by 69 in favor of the Bs side.
@@ -47,5 +47,7 @@ Strategy: ask-on-risk. Forecast: ~400–500 authored lines.
 
 - Applied phase50 to production via Supabase MCP (2026-10-11): RLS on, 4 policies, trigger, total_ventas, guard kept, ventas in net, grant ok, realtime ok. Security advisors: no new findings for ventas.
 
+- T4: `supabase/phase51_ventas_numeradas.sql` (commit `42246cb`): `ventas.numero` backfilled (pending after max pending numero of items+ventas, so the 69 USDT venta becomes #44; liquidated per cut), not null + check > 0, unique partial indexes mirroring items, symmetric cross-table triggers (advisory lock `items.numero.pendiente`, same key as the bot, errcode unique_violation), `numero` frozen on liquidated ventas, `crear_item_desde_bot` numbers over items+ventas (grants reaffirmed). TS/UI: `leerVenta` parses `numero` and rejects impossible dates (round-trip y/m/d); `siguienteNumeroPendiente` used by the new-item page and the "Generar venta" dialog (new numero field); `eliminarVenta` returns a result object; pending ventas listed in the movements table (mobile + desktop) sorted by numero with a "Venta" badge, tasa/comisión shown as 0, admin delete, numero/fecha/flujo ("Ventas de créditos") filters match them; the separate "Ventas de créditos" section was removed (duplicate of the table) and "Generar venta" moved to the header; "Movimientos" card counts ventas; liquidation detail shows `#numero`. RED: `npm test` 4 failing in `tests/ventas-leer.test.mjs` (numero, Feb 31, siguienteNumeroPendiente missing). GREEN: `npm test` 70 pass / 0 fail; `npm run lint` pass; `npm run build` pass. Commit: see `git log` (`feat(dashboard): list credit sales as numbered movements`).
+
 ## Next step
-T4: shared numbering + ventas in the movements list; parent applies phase51 via Supabase MCP.
+Parent applies `supabase/phase51_ventas_numeradas.sql` in production BEFORE deploying the UI (the UI selects `ventas.numero`).
