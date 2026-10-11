@@ -25,7 +25,13 @@ markup math by hand.
   loaded as given and flagged in code until the user confirms.
 
 ## Tasks
-- [ ] T1 Catalog + pricing helpers + tests (RED→GREEN). Route: delegated.
+- [x] T1 Catalog + pricing helpers + tests (RED→GREEN). Route: delegated.
+  Commit: this commit (`feat(reventa): add the resale price catalog and pricing helpers`).
+  RED: `tests/reventa.test.mjs` failed (module `src/lib/reventa.ts` missing).
+  GREEN: 12/12 reventa tests; `npm test` 87/87; eslint clean on the new files.
+  Rules: per-credit is derived (total/credits); custom quantity = exact tier, or loose
+  price for 1–29 when the variant has one, otherwise no price (null, no prorating);
+  sale rounding to nearest COP 1.000 / VES 10 / USDT 0,01.
 - [ ] T2 Reventa page (lists design) + calculator + sidebar. Route: delegated.
 
 ## Acceptance criteria
