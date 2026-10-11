@@ -31,6 +31,8 @@ removes the external payment.
 
 - [x] T4 Ventas share movement numbering and appear in the movements list (user request: the 69 USDT venta is movement #44). Route: delegated (writer trigger: SQL + list + form + actions).
 
+- [ ] T5 Contiguous numbering: deleting a pending item/venta shifts later numbers down by 1 (shared series); one-time compaction closes existing gap (#33). Movements card shows items count + "Canje de créditos: N". Branch feat/renumerar-movimientos. Route: delegated.
+
 ## Acceptance criteria
 - A 69 USDT venta raises the pending net by 69 in favor of the Bs side.
 - Liquidating includes pending ventas and freezes them.
@@ -52,4 +54,4 @@ Strategy: ask-on-risk. Forecast: ~400–500 authored lines.
 - Applied phase51 to production via Supabase MCP (2026-10-11, no-op drop triggers stripped): venta "30 Creditos Stella" = #44, 2 cross-table triggers, 2 unique indexes, bot numbers over items+ventas, bot grant service_role only. Security advisors: no new findings.
 
 ## Next step
-Parent applies `supabase/phase51_ventas_numeradas.sql` in production BEFORE deploying the UI (the UI selects `ventas.numero`).
+T5.
