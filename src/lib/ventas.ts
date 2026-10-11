@@ -41,6 +41,31 @@ export function siguienteNumeroPendiente(
   return Math.max(0, ...numerosItems, ...numerosVentas) + 1;
 }
 
+/**
+ * Lo que dice la tarjeta "Movimientos" del panel. El número grande cuenta
+ * solo los movimientos pendientes (items); las ventas de créditos —- el
+ * "canje de créditos" -— van en su propia línea y solo si hay alguna, para
+ * que el número coincida con los movimientos reales. El estado de
+ * aprobación es solo de items: las ventas no pasan por aprobación.
+ */
+export function resumenTarjetaMovimientos(
+  items: { revisado_at: string | null }[],
+  ventasPendientes: number,
+) {
+  const movimientos = items.length;
+  const sinAprobar = items.filter((i) => i.revisado_at === null).length;
+  const estado =
+    movimientos > 0
+      ? sinAprobar > 0
+        ? `${sinAprobar} sin aprobar`
+        : "Todos aprobados"
+      : ventasPendientes > 0
+        ? null
+        : "Nada que liquidar";
+  const canjes = ventasPendientes > 0 ? `Canje de créditos: ${ventasPendientes}` : null;
+  return { movimientos, estado, canjes };
+}
+
 /** "AAAA-MM-DD" que existe en el calendario: el 31 de febrero no pasa. */
 function esFechaReal(fecha: string) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(fecha);
