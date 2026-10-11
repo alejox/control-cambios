@@ -24,10 +24,6 @@ export default function VentasCredito({
       <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-border px-5 py-4">
         <div>
           <h2 className="text-[15px] font-medium text-ink">Ventas de créditos</h2>
-          <p className="mt-0.5 text-[12.5px] text-ink-soft">
-            Créditos que el lado Bs le vendió al lado COP. Se descuentan en el
-            próximo corte, sin comisión.
-          </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <p className="font-mono text-[12px] text-ink">
