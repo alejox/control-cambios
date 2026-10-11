@@ -190,6 +190,11 @@ begin
     from public.items
    where liquidacion_id is null;
 
+  -- Se bloquean las ventas pendientes antes de sumarlas: sin esto, un
+  -- borrado concurrente entre la suma y el sellado dejaría el corte con un
+  -- total_ventas que cuenta una venta que ya no existe.
+  perform 1 from public.ventas where liquidacion_id is null for update;
+
   select array_agg(id), count(*), coalesce(sum(usdt), 0)
     into v_venta_ids, v_cantidad_ventas, v_ventas
     from public.ventas
