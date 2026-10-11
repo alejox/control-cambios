@@ -71,6 +71,12 @@ markup math by hand.
   currency chip and stat pills; icon labels on margin/rate/payment methods; chat-style preview
   (header bar, dotted background, bubble tail, "ahora" + double check); WhatsApp-green button.
 
+## User-requested changes (recorded for traceability)
+- 46db944: user asked to remove the whole "De consulta" section; the page keeps only the WhatsApp list (USDT lists, provider conditions panel and calculator removed).
+- e71f8dc: user asked for currency order USD, COP, Bs (local ORDEN_REVENTA; Venta público unchanged).
+- d9d189c: user corrected Flujo TV panels: Super panel at 100 credits (source message said 50), Admin panel at 500.
+- 725ad07: user asked the Movimientos card to count items + credit swaps (43).
+
 ## Acceptance criteria
 - All four lists render exactly as provided, grouped by variant, with panel badges.
 - Calculator: 30 Stella credits at 20% markup = 82.80 USDT, converted with the current rates.
