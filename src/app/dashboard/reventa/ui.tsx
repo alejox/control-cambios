@@ -1,6 +1,11 @@
 import type { ReactNode } from "react";
 
-// Piezas chicas que comparten la lista y la calculadora.
+// Piezas chicas que comparten la lista, el listado y la calculadora.
+
+export const CLASE_CONTROL =
+  "h-10 w-full rounded-[10px] border border-border bg-surface px-3 text-[13.5px] text-ink outline-none transition focus:border-teal focus:ring-2 focus:ring-teal-soft aria-[invalid=true]:border-critical";
+
+export const CLASE_ETIQUETA = "font-mono text-[10.5px] uppercase tracking-widest text-ink-soft";
 
 const DOS = new Intl.NumberFormat("es-VE", {
   minimumFractionDigits: 2,

@@ -33,7 +33,7 @@ markup math by hand.
   price for 1–29 when the variant has one, otherwise no price (null, no prorating);
   sale rounding to nearest COP 1.000 / VES 10 / USDT 0,01.
 - [x] T2 Reventa page (lists design) + calculator + sidebar. Route: delegated.
-  Commit: this commit (`feat(reventa): add the resale section with price lists and calculator`).
+  Commit: 28313ff (`feat(reventa): add the resale section with price lists and calculator`).
   Checks: `npm test` 87/87; `npm run lint` exit 0; `npm run build` exit 0 (`/dashboard/reventa`).
   Test-first exception: UI only, no runnable component tests in the repo; pricing logic is
   covered by T1. Not checked in a browser (needs a logged-in session).
@@ -42,6 +42,21 @@ markup math by hand.
   starts, "Mejor precio", loose-recharge chip; sticky calculator on lg+ with rates from
   `/api/tasa-referencia` (overridable, reset/retry), copyable quote, margin kept in
   localStorage.
+- [x] T3 WhatsApp price list per currency (primary deliverable, mirrors Venta público). Route: delegated.
+  Commit: this commit (`feat(reventa): generate WhatsApp price lists per currency`).
+  RED: 11 failing in `tests/reventa.test.mjs` (`listadoWhatsApp` missing + round-up expectations).
+  GREEN: 20/20 reventa tests; `npm test` 95/95; `npm run lint` exit 0; `npm run build` exit 0.
+  `listadoWhatsApp({ proveedor, moneda: "VES"|"USD"|"COP", margenPct, tasa, mediosPago })` in
+  `src/lib/reventa.ts`, reusing `@/lib/venta-publico` (MonedaLista, ORDEN_MONEDAS,
+  ETIQUETA_SECCION, NOMBRE_MONEDA, formatMontoLista, formatMargen) and appending the same
+  per-currency "medios de cobro" (read-only `venta_publico_medios_pago`, same query as Venta
+  público). UI: currency segmented [En Bs | En USD | En COP] + provider tabs on top, "Listado
+  para WhatsApp" panel first (own margin per currency persisted in localStorage, own rate per
+  currency for Bs/COP with "margen sobre referencia" and reset, WhatsApp-bubble preview with
+  *bold*/_italic_, "Copiar mensaje", "Abrir en WhatsApp"); USDT list + calculator below.
+  Decision: sale rounding switched to ALWAYS UP (Venta público rule) for list and calculator:
+  totals COP 1.000 / Bs 10 / USD 0,01; per-credit COP 10 / Bs 1 / USD 0,01, derived from the
+  rounded total. Catalog stays static (no DB/editor).
 
 ## Acceptance criteria
 - All four lists render exactly as provided, grouped by variant, with panel badges.
@@ -49,7 +64,7 @@ markup math by hand.
 - `npm test`, `npm run lint`, `npm run build` pass.
 
 ## Progress / Evidence
-T1 and T2 done (see tasks). TeleLatino "Un dispositivo" 300/500 still flagged TODO(precio).
+T1, T2 and T3 done (see tasks). TeleLatino "Un dispositivo" 300/500 still flagged TODO(precio).
 
 ## Next step
 User confirms TeleLatino 300/500 prices and reviews the page in the browser.

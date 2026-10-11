@@ -3,7 +3,7 @@
 import {
   ahorroPct,
   mejorTramo,
-  panelDe,
+  iniciosDePanel,
   precioPorCredito,
   precioReferencia,
   type Proveedor,
@@ -38,13 +38,8 @@ export default function TarjetaVariante({
 
   // El panel se marca en la fila donde EMPIEZA, no en todas: siete filas
   // con la misma etiqueta repetida no dicen nada; el salto sí.
-  const inicioPanel = new Set<number>();
-  let panelAnterior: string | null = null;
-  for (const t of variante.tramos) {
-    const panel = panelDe(proveedor, t.creditos);
-    if (panel && panel !== panelAnterior) inicioPanel.add(t.creditos);
-    panelAnterior = panel;
-  }
+  // Es la misma regla que usa el listado para WhatsApp.
+  const inicioPanel = iniciosDePanel(proveedor, variante);
 
   const sueltoElegido = elegida?.tipo === "suelto";
 
@@ -137,7 +132,7 @@ export default function TarjetaVariante({
             const ahorro = ahorroPct(variante, t);
             const ancho = `${Math.max(6, (pc / referencia) * 100)}%`;
             const esMejor = t.creditos === mejor.creditos;
-            const panel = inicioPanel.has(t.creditos) ? panelDe(proveedor, t.creditos) : null;
+            const panel = inicioPanel.get(t.creditos) ?? null;
             const activo = elegida?.tipo === "tramo" && elegida.creditos === t.creditos;
 
             return (

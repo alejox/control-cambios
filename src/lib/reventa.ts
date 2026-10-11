@@ -11,7 +11,17 @@
 // "c/u" que no coincide con su propio total, y dos números para el mismo
 // dato terminan diciendo cosas distintas.
 //
-// Sin imports a propósito: los tests lo cargan directo con node.
+// Las monedas, sus nombres y el formato de montos son los de Venta
+// público: el listado para revendedores es la misma idea aplicada a otro
+// catálogo, y dos formas de escribir "12.420" terminan diciendo cosas
+// distintas.
+
+import { formatMonto } from "@/lib/items";
+import {
+  formatMontoLista,
+  NOMBRE_MONEDA,
+  type MonedaLista,
+} from "@/lib/venta-publico";
 
 export type MonedaVenta = "USDT" | "COP" | "VES";
 
@@ -286,14 +296,28 @@ export const PASO_REDONDEO: Record<MonedaVenta, number> = {
 };
 
 /**
+ * Una millonésima de paso: por debajo de cualquier diferencia que exista
+ * como plata, y suficiente para que el ruido del punto flotante
+ * (331.000,0000001) no salte al escalón de arriba. Es la misma tolerancia
+ * de precioDePlan en Venta público.
+ */
+const TOLERANCIA = 1e-6;
+
+function haciaArriba(valor: number, paso: number) {
+  return Math.ceil(valor / paso - TOLERANCIA) * paso;
+}
+
+/**
  * Precio de venta presentable: pesos al millar, bolívares a la decena,
- * USDT a centavos. Al más cercano, no hacia arriba: el margen ya es la
- * ganancia, y el redondeo mueve menos de medio paso para cada lado.
+ * USDT a centavos.
+ *
+ * Siempre HACIA ARRIBA, como en Venta público: al más cercano, la mitad
+ * de los precios de cada lista quedaría por debajo del margen elegido, y
+ * siempre para el mismo lado.
  */
 export function redondearVenta(valor: number, moneda: MonedaVenta) {
   if (moneda === "USDT") return centavos(valor);
-  const paso = PASO_REDONDEO[moneda];
-  return Math.round(valor / paso) * paso;
+  return haciaArriba(valor, PASO_REDONDEO[moneda]);
 }
 
 export type Reventa = {
@@ -387,4 +411,135 @@ export function textoCotizacion({
     lineas.push(`En bolívares: ${formatear(resultado.ventaVesRedondeada, "VES")}`);
   }
   return lineas.join("\n");
+}
+
+// --- Listado para WhatsApp ---------------------------------------------------
+//
+// La lista mayorista de un proveedor, con el margen aplicado y convertida a
+// una moneda, lista para mandarle a un revendedor. Cada moneda es una
+// lista independiente —- su margen y su tasa —-, como en Venta público.
+
+/**
+ * A cuánto se redondea el precio POR CRÉDITO de cada moneda: pesos a la
+ * decena y bolívares a la unidad. Es más fino que el del total porque el
+ * número es chico: 11.066 pesos al millar diría 12.000, un 8 % de más.
+ * También hacia arriba, y sale del total ya redondeado, así lo que dice
+ * el c/u es lo que de verdad cuesta cada crédito del paquete.
+ */
+const PASO_POR_CREDITO: Record<"VES" | "COP", number> = { VES: 1, COP: 10 };
+
+const SEPARADOR = "──────────────";
+
+/** Un precio de la lista en su moneda: Bs/COP sin decimales, USD con dos. */
+function montoListado(valor: number, moneda: MonedaLista) {
+  if (moneda === "USD") return `$ ${formatMonto(valor, "COP").replace(/^\$/, "")} USD`;
+  if (moneda === "COP") return `$ ${formatMontoLista(valor, "COP")} COP`;
+  return `Bs ${formatMontoLista(valor, "VES")}`;
+}
+
+/** El c/u va sin el código detrás: en la misma línea ya está el total. */
+function montoPorCredito(valor: number, moneda: MonedaLista) {
+  if (moneda === "USD") return `$ ${formatMonto(valor, "COP").replace(/^\$/, "")}`;
+  if (moneda === "COP") return `$ ${formatMontoLista(valor, "COP")}`;
+  return `Bs ${formatMontoLista(valor, "VES")}`;
+}
+
+/**
+ * Un monto en USDT del proveedor, con el margen, en la moneda de la lista.
+ * Pasa por las mismas funciones que la calculadora para que los dos digan
+ * el mismo número.
+ */
+function precioEn(usdt: number, moneda: MonedaLista, margenPct: number, tasa: number) {
+  const venta = aplicarMargen(usdt, margenPct);
+  return moneda === "USD" ? venta : redondearVenta(convertir(venta, tasa), moneda);
+}
+
+function porCreditoEn(valor: number, moneda: MonedaLista) {
+  return moneda === "USD" ? Math.ceil(valor * 100 - TOLERANCIA) / 100 : haciaArriba(valor, PASO_POR_CREDITO[moneda]);
+}
+
+const ETIQUETA_MONEDA: Record<MonedaLista, string> = { VES: "Bs", USD: "USD", COP: "COP" };
+
+/** Créditos donde empieza cada panel: la etiqueta va ahí, no en cada fila. */
+export function iniciosDePanel(proveedor: Proveedor, variante: Variante) {
+  const inicios = new Map<number, string>();
+  let anterior: string | null = null;
+  for (const t of variante.tramos) {
+    const panel = panelDe(proveedor, t.creditos);
+    if (panel && panel !== anterior) inicios.set(t.creditos, panel);
+    anterior = panel;
+  }
+  return inicios;
+}
+
+/**
+ * El mensaje entero para WhatsApp, o null si la lista convierte (Bs, COP)
+ * y todavía no tiene tasa: un listado sin precios no se manda.
+ *
+ * Arma bloques separados por una línea en blanco, como armarMensaje en
+ * Venta público: encabezado, una sección por variante, las condiciones del
+ * proveedor y, al final, los medios de cobro de esa moneda. No lleva ni el
+ * costo ni el margen: es lo que ve el revendedor.
+ */
+export function listadoWhatsApp({
+  proveedor,
+  moneda,
+  margenPct,
+  tasa,
+  mediosPago = "",
+}: {
+  proveedor: Proveedor;
+  moneda: MonedaLista;
+  margenPct: number;
+  /** Unidades de la moneda por USDT. Se ignora en USD. */
+  tasa: number | null;
+  mediosPago?: string;
+}): string | null {
+  const factor = moneda === "USD" ? 1 : tasa;
+  if (factor === null || !Number.isFinite(factor) || factor <= 0) return null;
+
+  const bloques = [
+    `*${proveedor.nombre} · Créditos para revendedores*\nPrecios en ${NOMBRE_MONEDA[moneda]} (${ETIQUETA_MONEDA[moneda]})`,
+    SEPARADOR,
+  ];
+
+  for (const variante of proveedor.variantes) {
+    const lineas: string[] = [];
+    if (variante.suelto) {
+      const s = variante.suelto;
+      // El precio suelto ES un precio por crédito: se redondea con el paso
+      // del c/u, no con el del total (504 Bs, no 510).
+      const venta = aplicarMargen(s.precioUsdt, margenPct);
+      const unidad = porCreditoEn(moneda === "USD" ? venta : convertir(venta, factor), moneda);
+      lineas.push(
+        `🔸 Recarga suelta de ${s.min} a ${s.max} créditos ➜ ${montoPorCredito(unidad, moneda)} c/u`,
+      );
+    }
+    const paneles = iniciosDePanel(proveedor, variante);
+    for (const t of variante.tramos) {
+      const total = precioEn(t.totalUsdt, moneda, margenPct, factor);
+      const cu = porCreditoEn(total / t.creditos, moneda);
+      const panel = paneles.get(t.creditos);
+      lineas.push(
+        `🔹 ${t.creditos.toLocaleString("es-VE")} créditos ➜ ${montoListado(total, moneda)} (${montoPorCredito(cu, moneda)} c/u)${
+          panel ? ` · *${panel}*` : ""
+        }`,
+      );
+    }
+
+    const etiqueta = etiquetaVariante(variante);
+    const titulo = etiqueta
+      ? [`📺 *${etiqueta}*`, ...(variante.equipos ? [`_${variante.equipos}_`] : [])].join("\n")
+      : null;
+    bloques.push(titulo ? `${titulo}\n\n${lineas.join("\n")}` : lineas.join("\n"));
+  }
+
+  if (proveedor.notas.length > 0) {
+    bloques.push(SEPARADOR, proveedor.notas.map((n) => `✅ ${n}`).join("\n"));
+  }
+
+  const medios = mediosPago.trim();
+  if (medios) bloques.push(medios);
+
+  return bloques.join("\n\n");
 }
