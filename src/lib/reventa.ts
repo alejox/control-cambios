@@ -158,11 +158,11 @@ export const PROVEEDORES: Proveedor[] = [
       },
     ],
     paneles: [
-      { desde: 50, panel: "Super panel" },
+      { desde: 100, panel: "Super panel" },
       { desde: 500, panel: "Admin panel" },
     ],
     notas: [
-      "Super panel a partir de 50 créditos.",
+      "Super panel a partir de 100 créditos.",
       "Admin panel a partir de 500 créditos.",
     ],
   },

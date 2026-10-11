@@ -110,7 +110,8 @@ test("los paneles salen de los umbrales del proveedor", () => {
 
   const flujo = PROVEEDORES.find((p) => p.id === "flujotv");
   assert.equal(panelDe(flujo, 30), null);
-  assert.equal(panelDe(flujo, 50), "Super panel");
+  assert.equal(panelDe(flujo, 50), null);
+  assert.equal(panelDe(flujo, 100), "Super panel");
   assert.equal(panelDe(flujo, 500), "Admin panel");
 
   const oleada = PROVEEDORES.find((p) => p.id === "oleadatv");
