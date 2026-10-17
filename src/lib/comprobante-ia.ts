@@ -34,11 +34,12 @@ const TIMEOUT_MS = 18_000;
 // avisa en vez de mandarlo igual y recibir un error opaco.
 export const IMAGENES_OK = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
-// Ningun campo es obligatorio a proposito: si el comprobante no trae el
-// dato, preferimos que lo omita antes que se invente algo para cumplir
-// con el esquema.
+// Los campos del monto siempre deben estar presentes, pero admiten null:
+// exigir una respuesta no significa exigir un monto inventado. Los demas
+// campos siguen siendo opcionales cuando no se pueden leer.
 const ESQUEMA = {
   type: "object",
+  required: ["monto_texto", "monto"],
   properties: {
     referencia: {
       type: "string",
@@ -53,12 +54,14 @@ const ESQUEMA = {
       description: "Fecha de la operacion en formato yyyy-mm-dd.",
     },
     monto_texto: {
-      type: "string",
-      description: "El monto EXACTAMENTE como aparece impreso, por ejemplo '3.200,00'.",
+      type: ["string", "null"],
+      description:
+        "El monto EXACTAMENTE como aparece impreso, por ejemplo '3.200,00'. null si no aparece o no es legible.",
     },
     monto: {
-      type: "number",
-      description: "El mismo monto como numero con punto decimal. '3.200,00' es 3200.00",
+      type: ["number", "null"],
+      description:
+        "El mismo monto como numero con punto decimal. '3.200,00' es 3200.00. null si no aparece o no es legible.",
     },
     // Campo nuevo, y no un capricho: el bot de Telegram no tiene un
     // selector de moneda al lado como el formulario de la web. Sin esto no
@@ -79,7 +82,7 @@ const ESQUEMA = {
 
 const INSTRUCCIONES = `Transcribis datos de comprobantes de pago de Venezuela y Colombia. Sos un transcriptor, no un interprete: tu trabajo es COPIAR lo que esta impreso, no razonar sobre ello.
 
-REGLA PRINCIPAL: si no podes LEER un dato con certeza en la imagen, omiti ese campo. Un campo vacio es correcto; un campo inventado corrompe la contabilidad de alguien.
+REGLA PRINCIPAL: evalua cada campo por separado. Incluye siempre monto_texto y monto; si el monto no aparece o no se puede LEER con certeza, devuelve ambos como null. Omite los demas campos que no se puedan leer con certeza. Conserva los datos que si sean legibles, aunque otra parte de la imagen este borrosa o cortada. Un dato ausente es correcto; un dato inventado corrompe la contabilidad de alguien.
 
 Prohibido:
 - Inventar, completar o deducir un valor que no este impreso.
@@ -96,13 +99,13 @@ Como leer cada campo:
 - beneficiario: quien RECIBE el dinero, no quien lo envia.
 - banco: el banco o app del comprobante.
 
-Si la imagen esta borrosa, cortada o no es un comprobante, devolve todos los campos vacios.`;
+Si no es un comprobante o no hay ningun dato legible, devuelve monto_texto y monto como null y omite los demas campos. Nunca uses 0 como sustituto de un monto ausente o ilegible.`;
 
 type Extraido = {
   referencia?: string;
   fecha?: string;
-  monto_texto?: string;
-  monto?: number;
+  monto_texto?: string | null;
+  monto?: number | null;
   moneda?: string;
   beneficiario?: string;
   banco?: string;
